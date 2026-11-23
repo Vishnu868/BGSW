@@ -123,7 +123,7 @@ const tiles = [
   [libs.filter(n => !n.direct).length, "transitive"], [D.edges.length, "dependency edges"],
   [sevCount("critical"), "critical findings"], [sevCount("high"), "high findings"],
   [F.length, "total findings"], [D.meta.ecosystems.join(", "), "ecosystems"],
-  [((D.meta.scanners || {}).ran || ["osv"]).map(s => ({osv: "OSV", trivy: "Trivy", grype: "Grype"}[s] || s)).join(" · "), "vulnerability scanners"]];
+  [["osv", "trivy", "grype"].filter(s => ((D.meta.scanners || {}).ran || ["osv"]).includes(s)).map(s => ({osv: "OSV", trivy: "Trivy", grype: "Grype"}[s] || s)).join(" · "), "vulnerability scanners"]];
 $("#tiles").innerHTML = tiles.map(([v, l]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
 
 document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {

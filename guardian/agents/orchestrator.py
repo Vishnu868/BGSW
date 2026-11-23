@@ -30,7 +30,7 @@ def _specialist(agent, item, facts, router) -> dict:
         out, notes, status = verifier.specialist(r["output"], r["evidence"], item, facts)
         src = "ai"
     out["source"] = src
-    return {"agent": agent.name, "output": out, "verifier_notes": notes, "status": status, "steps": r["steps"],
+    return {"agent": agent.name, "output": out, "verifier_notes": notes, "status": status, "source": src, "steps": r["steps"],
             "provider": r["provider"], "evidence_ids": sorted(r["evidence"])}
 
 
