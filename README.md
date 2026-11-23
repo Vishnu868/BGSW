@@ -31,6 +31,12 @@ python -m guardian scan targets\juice-shop-pr --baseline runs\juice-shop\sbom.cd
 Detects: swapped integrity hash (critical), download host changed to a non-official registry,
 a new dependency that runs an install script, and a downgrade.
 
+## Architecture
+
+![Architecture](docs/architecture.png)
+
+(Regenerate with `python scripts/make_architecture.py`.)
+
 ## Pipeline
 
 ```

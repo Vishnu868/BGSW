@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1060" width="1800" height="1060" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3d4a5c"/></marker>
+<style>.h{font-size:30px;font-weight:700;fill:#16202c}.t{font-size:18px;font-weight:700}.t2{font-size:17px;font-weight:700}
+.tag{font-size:12px;font-weight:600;letter-spacing:.3px}.l{font-size:14.5px;fill:#25303d}.b{font-weight:700}
+.bt{font-size:15px;font-weight:800;fill:#5b6876;letter-spacing:1px}.bs{font-size:13.5px;fill:#5b6876}.lg{font-size:14px;fill:#3d4a5c}
+.al{font-size:13px;fill:#3d4a5c;font-style:italic}</style></defs>
+<rect width="1800" height="1060" fill="#ffffff"/>
+<text x="30" y="44" class="h">Software Supply Chain Guardian — architecture</text>
+<rect x="30" y="62" width="22" height="16" rx="4" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="60" y="75" class="lg">deterministic engine</text>
+<rect x="250" y="62" width="22" height="16" rx="4" fill="#f1eafa" stroke="#6b3fa0" stroke-width="2"/>
+<text x="280" y="75" class="lg">AI agent</text>
+<rect x="374" y="62" width="22" height="16" rx="4" fill="#fdf0e4" stroke="#c2580a" stroke-width="2"/>
+<text x="404" y="75" class="lg">human decision</text>
+<rect x="546" y="62" width="22" height="16" rx="4" fill="#f4f5f7" stroke="#5b6876" stroke-width="2"/>
+<text x="576" y="75" class="lg">data / output</text>
+<rect x="710" y="62" width="22" height="16" rx="4" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="2"/>
+<text x="740" y="75" class="lg">external public data</text>
+<rect x="30" y="96" width="1440" height="262" rx="16" fill="#fafbfd" stroke="#d5dbe3"/>
+<text x="50" y="120" class="bt">DAY 1 · EYES</text>
+<text x="290" y="120" class="bs">python -m guardian scan &lt;repo&gt;  →  what is in the app, what changed, what is risky</text>
+<rect x="50" y="134" width="200" height="210" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="66" y="164" class="t" fill="#5b6876">Any repository</text>
+<text x="66" y="192" class="l">local folder or git URL</text>
+<text x="66" y="213" class="l">read-only clone</text>
+<text x="66" y="234" class="l"></text>
+<text x="66" y="255" class="l">missing npm lockfile?</text>
+<text x="66" y="276" class="l">generated with</text>
+<text x="66" y="297" class="l">--ignore-scripts</text>
+<text x="66" y="318" class="l">(no package code runs)</text>
+<rect x="290" y="134" width="360" height="210" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="306" y="164" class="t" fill="#1f4e9c">1 · DISCOVER</text>
+<text x="636" y="162" class="tag" text-anchor="end" fill="#1f4e9c">deterministic engine</text>
+<text x="306" y="192" class="l">find manifests · lockfiles ·</text>
+<text x="306" y="213" class="l">Dockerfiles · CI workflows</text>
+<text x="306" y="234" class="l">adapters: npm lockfile v1–v3 ·</text>
+<text x="306" y="255" class="l">Python · Maven · Go · CycloneDX</text>
+<text x="306" y="276" class="l">deps.dev fills lockfile-less trees</text>
+<text x="306" y="297" class="l b">→ dependency graph + paths</text>
+<rect x="690" y="134" width="420" height="210" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="706" y="164" class="t" fill="#1f4e9c">2 · DETECT</text>
+<text x="1096" y="162" class="tag" text-anchor="end" fill="#1f4e9c">deterministic engine</text>
+<text x="706" y="192" class="l">osv.py        1.1/1.2 CVEs · CVSS · fixed version</text>
+<text x="706" y="213" class="l">packages.py   1.3 typosquat · 1.4 install scripts</text>
+<text x="706" y="234" class="l">lockfile.py   1.6 tamper · registry · diff</text>
+<text x="706" y="255" class="l">container.py  1.5 digest pin · EOL · root</text>
+<text x="706" y="276" class="l">cicd.py       1.7 unpinned actions · injection</text>
+<text x="706" y="297" class="l b">every finding carries evidence</text>
+<rect x="1150" y="134" width="300" height="210" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1166" y="164" class="t" fill="#5b6876">Day 1 outputs</text>
+<text x="1166" y="192" class="l b">guardian.html</text>
+<text x="1166" y="213" class="l">interactive dependency graph</text>
+<text x="1166" y="234" class="l">findings.json  (evidence)</text>
+<text x="1166" y="255" class="l">sbom.cdx.json  (CycloneDX 1.5,</text>
+<text x="1166" y="276" class="l">  next scan&#x27;s baseline)</text>
+<text x="1166" y="297" class="l">report.md</text>
+<path d="M250 239 L286 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M650 239 L686 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M1110 239 L1146 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<rect x="30" y="384" width="1440" height="286" rx="16" fill="#fafbfd" stroke="#d5dbe3"/>
+<text x="50" y="408" class="bt">DAY 2 · BRAIN</text>
+<text x="290" y="408" class="bs">python -m guardian analyze &lt;repo&gt;  →  what matters most, and why</text>
+<rect x="50" y="424" width="360" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="66" y="454" class="t" fill="#1f4e9c">3 · ANALYZE: context</text>
+<text x="396" y="452" class="tag" text-anchor="end" fill="#1f4e9c">deterministic engine</text>
+<text x="66" y="482" class="l">reachability.py  imported? file:line</text>
+<text x="66" y="503" class="l">intel.py  EPSS + CISA KEV</text>
+<text x="66" y="524" class="l">prioritize.py  explainable score:</text>
+<text x="66" y="545" class="l">  CVSS · exploitation · dev-only ·</text>
+<text x="66" y="566" class="l">  reachability · directness</text>
+<text x="66" y="587" class="l b">→ P1 · P2 · P3 · P4 risk items</text>
+<rect x="450" y="424" width="460" height="230" rx="12" fill="#f1eafa" stroke="#6b3fa0" stroke-width="2"/>
+<text x="466" y="454" class="t" fill="#6b3fa0">AI INVESTIGATOR (one per top risk)</text>
+<text x="896" y="452" class="tag" text-anchor="end" fill="#6b3fa0">AI agent</text>
+<text x="466" y="482" class="l">picks read-only tools one at a time (≤5 steps):</text>
+<text x="466" y="503" class="l">item_details · dependency_paths · code_usage ·</text>
+<text x="466" y="524" class="l">advisory · exploit_intel · registry_info ·</text>
+<text x="466" y="545" class="l">registry_versions · baseline_change → E1..En</text>
+<text x="466" y="566" class="l b">evidence checker: cite real evidence ids,</text>
+<text x="466" y="587" class="l b">versions must exist, CVEs must be in evidence,</text>
+<text x="466" y="608" class="l b">confidence &lt; 0.6 → human review</text>
+<rect x="950" y="424" width="250" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="966" y="454" class="t" fill="#1f4e9c">LLM ROUTER</text>
+<text x="966" y="482" class="l">Claude  (Anthropic SDK)</text>
+<text x="966" y="503" class="l">   ↓ on failure</text>
+<text x="966" y="524" class="l">Gemini  (REST)</text>
+<text x="966" y="545" class="l">   ↓</text>
+<text x="966" y="566" class="l">Groq  (REST)</text>
+<text x="966" y="587" class="l">   ↓</text>
+<text x="966" y="608" class="l b">rule-based logic (no key)</text>
+<rect x="1240" y="424" width="210" height="230" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1256" y="454" class="t" fill="#5b6876">analysis.json</text>
+<text x="1256" y="482" class="l">prioritised risks</text>
+<text x="1256" y="503" class="l">verdicts labelled</text>
+<text x="1256" y="524" class="l">AI or rules</text>
+<text x="1256" y="545" class="l">(inference, separate</text>
+<text x="1256" y="566" class="l">from evidence)</text>
+<text x="1256" y="587" class="l">executive summary</text>
+<path d="M1300 344 L1300 372 L230 372 L230 420" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<text x="640" y="366" class="al">findings.json</text>
+<path d="M410 539 L446 539" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M910 520 L946 520" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M950 556 L914 556" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M680 424 L680 415 L1345 415 L1345 420" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<text x="1000" y="399" class="al">verdicts</text>
+<rect x="30" y="696" width="1440" height="266" rx="16" fill="#fafbfd" stroke="#d5dbe3"/>
+<text x="50" y="720" class="bt">DAY 2 · SHIELD</text>
+<text x="290" y="720" class="bs">plan → approve → apply → validate → report   (nothing changes without a human yes)</text>
+<rect x="50" y="736" width="240" height="212" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="66" y="766" class="t" fill="#1f4e9c">4 · PLAN</text>
+<text x="66" y="794" class="l">9 allow-listed actions:</text>
+<text x="66" y="815" class="l">upgrade · override ·</text>
+<text x="66" y="836" class="l">replace · pin digest/SHA</text>
+<text x="66" y="857" class="l">· block · escalate</text>
+<text x="66" y="878" class="l">+ compat · rollback</text>
+<text x="66" y="899" class="l b">plan = SHA-256 hash</text>
+<rect x="320" y="736" width="230" height="212" rx="12" fill="#fdf0e4" stroke="#c2580a" stroke-width="2"/>
+<text x="336" y="766" class="t" fill="#c2580a">5 · APPROVE</text>
+<text x="336" y="794" class="l">terminal or web page</text>
+<text x="336" y="815" class="l">approval bound to</text>
+<text x="336" y="836" class="l">the plan hash</text>
+<text x="336" y="857" class="l">plan edited → void</text>
+<text x="336" y="878" class="l b">no yes → no change</text>
+<rect x="580" y="736" width="260" height="212" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="596" y="766" class="t" fill="#1f4e9c">6 · APPLY (sandbox)</text>
+<text x="596" y="794" class="l">copy + git branch</text>
+<text x="596" y="815" class="l">edit package.json /</text>
+<text x="596" y="836" class="l">FROM / uses: lines</text>
+<text x="596" y="857" class="l">lockfiles --ignore-scripts</text>
+<text x="596" y="878" class="l">kill switch: STOP file</text>
+<text x="596" y="899" class="l b">→ remediation.patch</text>
+<rect x="870" y="736" width="280" height="212" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="886" y="766" class="t" fill="#1f4e9c">7 · VALIDATE</text>
+<text x="886" y="794" class="l">lockfile resolve</text>
+<text x="886" y="815" class="l">(+ npm ci / tests)</text>
+<text x="886" y="836" class="l">rescan with DISCOVER+DETECT</text>
+<text x="886" y="857" class="l">before vs after, new risks?</text>
+<text x="886" y="878" class="l b">verified · partial · failed</text>
+<rect x="1180" y="736" width="270" height="212" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1196" y="766" class="t" fill="#5b6876">REPORT + POLICY</text>
+<text x="1196" y="794" class="l b">guardian_report.html</text>
+<text x="1196" y="815" class="l">finding → evidence → AI →</text>
+<text x="1196" y="836" class="l">approval → result →</text>
+<text x="1196" y="857" class="l">remaining risk</text>
+<text x="1196" y="878" class="l">policy.json gate</text>
+<text x="1196" y="899" class="l">(exit 1 blocks CI)</text>
+<path d="M1345 654 L1345 684 L245 684 L245 732" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<text x="640" y="678" class="al">analysis.json</text>
+<path d="M290 842 L316 842" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M550 842 L576 842" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M840 842 L866 842" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M1150 842 L1176 842" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<rect x="30" y="980" width="1440" height="52" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-dasharray="6 4" stroke-width="2"/>
+<text x="50" y="1012" class="l"><tspan class="b">audit.jsonl</tspan> — append-only trail: every stage, every AI call (provider, model, outcome — never keys), the approval, every change</text>
+<rect x="1500" y="96" width="270" height="936" rx="16" fill="#f7fbf8" stroke="#1f7a3a" stroke-width="2"/>
+<text x="1518" y="124" class="t" fill="#1f7a3a">Public data (read-only)</text>
+<text x="1518" y="146" class="lg">cached in .cache/ → offline demo</text>
+<rect x="1516" y="162" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="194" class="t2" fill="#1f7a3a">OSV.dev</text>
+<text x="1530" y="219" class="l">CVEs for every ecosystem</text>
+<rect x="1516" y="258" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="290" class="t2" fill="#1f7a3a">deps.dev</text>
+<text x="1530" y="315" class="l">resolve transitive deps</text>
+<rect x="1516" y="354" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="386" class="t2" fill="#1f7a3a">npm registry</text>
+<text x="1530" y="411" class="l">metadata · downloads · versions</text>
+<rect x="1516" y="450" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="482" class="t2" fill="#1f7a3a">PyPI JSON</text>
+<text x="1530" y="507" class="l">published versions</text>
+<rect x="1516" y="546" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="578" class="t2" fill="#1f7a3a">FIRST EPSS</text>
+<text x="1530" y="603" class="l">exploit probability</text>
+<rect x="1516" y="642" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="674" class="t2" fill="#1f7a3a">CISA KEV</text>
+<text x="1530" y="699" class="l">exploited in the wild</text>
+<rect x="1516" y="738" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="770" class="t2" fill="#1f7a3a">OCI registries</text>
+<text x="1530" y="795" class="l">image → sha256 digest</text>
+<rect x="1516" y="834" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="866" class="t2" fill="#1f7a3a">GitHub API</text>
+<text x="1530" y="891" class="l">action tag → commit SHA</text>
+<rect x="1516" y="930" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
+<text x="1530" y="962" class="t2" fill="#1f7a3a">AI providers</text>
+<text x="1530" y="987" class="l">Claude · Gemini · Groq</text>
+<path d="M1500 230 L1474 230" fill="none" stroke="#1f7a3a" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<path d="M1500 540 L1474 540" fill="none" stroke="#1f7a3a" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+<path d="M1500 842 L1474 842" fill="none" stroke="#1f7a3a" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+</svg>
