@@ -7,19 +7,15 @@ The Orchestrator & Triage agent may move this score by at most 20 points, with a
   reachability  imported +5; direct but never imported -10; only via unused parents -15
   directness    direct dependency +5 (the app chose it; one edit fixes it)
   supply chain  typosquat/malicious/tampered findings +10
-Priority: P1 >= 80 fix now · P2 60-79 this sprint · P3 35-59 plan · P4 < 35 accept / monitor
+  business      SSVC-inspired decision from config/business_rules.json (Act +15, Attend +8, Track* +3, Track 0)
+Priority bands come from neurosymbolic/rules.py BAND (one definition for the whole system):
+P1 >= 80 fix now · P2 60-79 this sprint · P3 35-59 plan · P4 < 35 accept / monitor
 """
 from __future__ import annotations
 
+from ..neurosymbolic.rules import band
+
 SEV_BASE = {"critical": 90, "high": 70, "medium": 45, "low": 20, "info": 5}
-BAND = [(80, "P1", "fix now"), (60, "P2", "fix this sprint"), (35, "P3", "plan"), (0, "P4", "accept / monitor")]
-
-
-def band(score: float) -> tuple[str, str]:
-    for lo, p, label in BAND:
-        if score >= lo:
-            return p, label
-    return "P4", "accept / monitor"
 
 
 def build_items(doc: dict, reach: dict, kev: set, epss: dict, business: dict | None = None) -> list[dict]:

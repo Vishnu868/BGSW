@@ -63,11 +63,11 @@ def parse_purl(purl: str) -> tuple[str, str, str]:
 
 
 # ------------------------------------------------------------------ runners ---
-def run_trivy(target: str, out_file: Path, offline: bool, image: bool = False) -> tuple[list[dict], str]:
+def run_trivy(target: str, out_file: Path, offline: bool, image: bool = False, sbom: bool = False) -> tuple[list[dict], str]:
     exe = binary("trivy")
     if not exe:
         return [], "not installed"
-    cmd = [exe, "image" if image else "fs", "--scanners", "vuln", "--format", "json", "--quiet",
+    cmd = [exe, "image" if image else "sbom" if sbom else "fs", "--scanners", "vuln", "--format", "json", "--quiet",
            "--cache-dir", str(CACHE / "trivy"), "--output", str(out_file)]
     if offline:
         cmd += ["--skip-db-update", "--offline-scan"]
@@ -132,12 +132,23 @@ def scan(graph, repo: Path, findings: list[Finding], repo_id: str, out_dir: Path
     out_dir.mkdir(parents=True, exist_ok=True)
     status = {"osv": "ok"}
     results: list[dict] = []
+    # our own resolved component list as a CycloneDX SBOM: the fallback input when a scanner cannot resolve the
+    # repository itself (e.g. Maven projects without network access to Maven Central)
+    from ..report.sbom import cyclonedx
+    sbom_in = out_dir / "input.cdx.json"
+    sbom_in.write_text(json.dumps(cyclonedx(graph, [], {"repo": repo.name})), encoding="utf-8")
+    has_libs = any(c.kind == "library" for c in graph.nodes.values())
     for tool in use:
         t0 = time.time()
         fn = run_trivy if tool == "trivy" else run_grype
         target = str(repo) if tool == "trivy" else f"dir:{repo}"
         try:
             res, st = fn(target, out_dir / f"{tool}.json", offline)
+            if (not res) and has_libs:              # fs mode failed or saw nothing -> scan our SBOM instead
+                res2, st2 = (run_trivy(str(sbom_in), out_dir / f"{tool}.json", offline, sbom=True) if tool == "trivy"
+                             else run_grype(f"sbom:{sbom_in}", out_dir / f"{tool}.json", offline))
+                if st2.startswith("ok"):
+                    res, st = res2, f"{st2} via our SBOM (filesystem mode: {st[:60]})"
         except Exception as e:  # a broken external tool must never stop the scan
             res, st = [], f"failed: {e}"
         status[tool] = st + (f", {time.time() - t0:.0f}s" if res else "")
