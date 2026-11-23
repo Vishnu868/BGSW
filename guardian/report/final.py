@@ -23,7 +23,8 @@ def build(run_dir: Path, log=print) -> dict:
     val = _load(run_dir / "validation.json") or {}
     by_f = {f["id"]: f for f in findings["findings"]}
     items = {i["id"]: i for i in analysis.get("items", [])}
-    inv = {i["item"]: i for i in analysis.get("investigations", [])}
+    cases = analysis.get("cases", {})
+    review = _load(run_dir / "review.json") or {}
     res_by = {r["id"]: r for r in applied.get("results", [])}
     val_by = {v["id"]: v for v in val.get("per_action", [])}
     stories = []
@@ -36,9 +37,17 @@ def build(run_dir: Path, log=print) -> dict:
             "original_finding": {"id": f0["id"], "title": f0["title"], "evidence": f0["evidence"],
                                  "dependency_path": (f0.get("component_detail") or {}).get("dependency_path")} if f0 else None,
             "verified_evidence": "deterministic (scanner, registry, advisory data)",
-            "ai_inference": inv.get(a["risk_item"], {}).get("result"),
-            "ai_steps": inv.get(a["risk_item"], {}).get("steps"),
-            "ai_checker_notes": inv.get(a["risk_item"], {}).get("checker_notes"),
+            "ai_inference": item.get("ai"),
+            "agents": [{"agent": e["agent"], "source": e.get("source", "ai"), "status": e["status"],
+                        "summary": (e["output"].get("risk_summary") or e["output"].get("reason") or e["output"].get("concern")
+                                    or (", ".join(e["output"].get("specialists", [])) if e["output"].get("specialists") else "")),
+                        "verdict": e["output"].get("verdict") or e["output"].get("priority") or
+                                   ("agrees" if e["output"].get("agree") else "disagrees" if "agree" in e["output"] else "")}
+                       for e in (cases.get(a["risk_item"]) or {}).get("entries", [])],
+            "ai_steps": [st for e in (cases.get(a["risk_item"]) or {}).get("entries", []) for st in (e.get("steps") or [])],
+            "ai_checker_notes": [n for e in (cases.get(a["risk_item"]) or {}).get("entries", []) for n in (e.get("verifier_notes") or []) if n],
+            "planner_agent": a.get("planner"), "critic": a.get("critic"),
+            "human_review": review.get(a["risk_item"]),
             "recommended_action": {"type": a["type"], "params": a["params"], "rationale": a["rationale"],
                                    "compatibility": a["compatibility"], "rollback": a["rollback"]},
             "approval": ("approved" if a["id"] in approval.get("approved_actions", []) else
@@ -58,7 +67,8 @@ def build(run_dir: Path, log=print) -> dict:
            "sandbox_branch": applied.get("branch"), "validation_verdict": val.get("verdict"),
            "checks": val.get("checks"), "before": val.get("before"), "after": val.get("after"),
            "new_findings_after_fix": val.get("new_findings"), "sbom_changes": val.get("sbom_changes"),
-           "stories": stories, "remaining_unplanned_high_risk": [{"id": i["id"], "risk": i["headline"]} for i in remaining_high],
+           "stories": stories, "agents": analysis.get("agents"), "review_queue": analysis.get("review_queue"),
+           "review_decisions": review, "next_iteration": val.get("next_iteration"), "remaining_unplanned_high_risk": [{"id": i["id"], "risk": i["headline"]} for i in remaining_high],
            "accepted_risk": accepted, "final_confidence": conf,
            "audit_trail": audit.read(run_dir / "audit.jsonl")}
     (run_dir / "guardian_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
@@ -87,11 +97,19 @@ def markdown(r: dict) -> str:
         if s.get("ai_inference"):
             L.append(f"- {'AI inference' if s['ai_inference'].get('source') == 'ai' else 'Rule-based analysis'} ({s['ai_inference'].get('source')}, confidence {s['ai_inference'].get('confidence')}): "
                      f"{s['ai_inference'].get('risk_summary')}")
+        for ag in s.get("agents") or []:
+            L.append(f"- Agent {ag['agent']} ({ag['source']}, {ag['status']}): {ag['verdict']} {ag['summary'][:160]}")
+        if s.get("critic"):
+            L.append(f"- Critic on the plan: {'agrees' if s['critic']['agree'] else 'DISAGREES'} {s['critic'].get('concern', '')}")
         if s.get("applied"):
             L.append(f"- Applied: {s['applied']['status']} - {s['applied']['detail']}")
         if s.get("validation"):
             L.append(f"- Validation: {s['validation']['status']} ({s['validation']['resolved']}/{s['validation']['targeted']} findings resolved)")
         L.append("")
+    if r.get("next_iteration"):
+        L += ["## Next iteration (proposed, needs a new approval)", ""] + [
+            f"- {n['params']['package']} {n['params'].get('from', '')} -> {n['params']['to']}: {n['rationale']} ({n['source']})"
+            for n in r["next_iteration"]] + [""]
     L += ["## Remaining / accepted risk", "", f"{len(r['accepted_risk'])} lower-priority items accepted and monitored; "
           f"{len(r['remaining_unplanned_high_risk'])} high-priority items still need a decision.", "",
           "## Audit trail", ""] + [f"- {e['time']} {e['event']} ({e['operator']})" for e in r["audit_trail"]]
@@ -115,7 +133,9 @@ def page(r: dict) -> str:
 <div class=row><div><h4>1 · Verified evidence</h4>{''.join(f'<div class=ev><b>{e(x["source"].split("/")[-1] if x["source"].startswith("http") else x["source"])}</b>: {e(x["detail"])}</div>' for x in of.get('evidence', [])[:4])}
 <div class=ev><b>path</b>: {e(' → '.join(of.get('dependency_path') or []))}</div></div>
 <div><h4>2 · {'AI analysis <span class=m>(inference, checked)</span>' if ai and ai.get('source') == 'ai' else 'Analysis <span class=m>(rule-based, no AI)</span>'}</h4>{f"<div class=ev>{e(str(ai.get('risk_summary')))}</div><div class=ev>verdict <b>{e(str(ai.get('verdict')))}</b> · confidence {e(str(ai.get('confidence')))} · source {e(str(ai.get('source')))}</div>" if ai else '<div class=m>not investigated</div>'}
-{''.join(f'<div class=ev>checker: {e(n)}</div>' for n in (s.get('ai_checker_notes') or []))}</div>
+{''.join(f'<div class=ev><b>{e(ag["agent"])}</b> ({e(ag["source"])}, {e(ag["status"])}): {e(str(ag["verdict"]))} {e(str(ag["summary"])[:140])}</div>' for ag in (s.get('agents') or []))}
+{''.join(f'<div class=ev>verifier: {e(n)}</div>' for n in (s.get('ai_checker_notes') or [])[:4])}
+{f"<div class=ev><b>critic on plan</b>: {'agrees' if s['critic']['agree'] else 'DISAGREES'} {e(s['critic'].get('concern', ''))}</div>" if s.get('critic') else ''}</div>
 <div><h4>3 · Action &amp; approval</h4><div class=ev>{e(ra['rationale'])}</div><div class=ev><b>compat</b>: {e(ra['compatibility']['reason'])}</div>
 <div class=ev><b>rollback</b>: {e(ra['rollback'])}</div><div class=ev><b>approval</b>: {e(s['approval'])}</div></div>
 <div><h4>4 · Result</h4><div class=ev>{e((s.get('applied') or {}).get('detail', 'not applied'))}</div>
@@ -146,6 +166,8 @@ td,th{{padding:6px 10px;border-bottom:1px solid var(--l);text-align:left;font-si
 <p>{e(summ)}</p>
 <h2>Before / after</h2>{ba}
 <h2>From finding to verified remediation</h2>{''.join(cards) or '<p class=m>No plan yet.</p>'}
+{('<h2>Next iteration (proposed, needs a new approval)</h2><ul>' + ''.join(f"<li>{e(n['params']['package'])} {e(n['params'].get('from', ''))} → {e(n['params']['to'])}: {e(n['rationale'])} <span class=m>({e(n['source'])})</span></li>" for n in r['next_iteration']) + '</ul>') if r.get('next_iteration') else ''}
+<h2>Agents</h2><p>{' · '.join(e(a['id'] + ' ' + a['name']) for a in (r.get('agents') or []))}</p>
 <h2>Remaining and accepted risk</h2><p>{len(r['accepted_risk'])} P3/P4 items accepted and monitored on every scan; {len(r['remaining_unplanned_high_risk'])} P1/P2 items still need a decision.</p>
 <h2>Audit trail</h2><table><tr><th>time</th><th>event</th><th>operator</th><th>details</th></tr>{trail}</table>
 <p class=m>Evidence sections are deterministic; "AI analysis" is model inference checked against that evidence. Every change was applied in a sandbox only after explicit human approval.</p>

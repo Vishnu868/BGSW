@@ -18,7 +18,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {
-    "juice-shop": "https://github.com/juice-shop/juice-shop",
+    "juice-shop": "https://github.com/juice-shop/juice-shop",          # npm (server + Angular)   - main demo
+    "NodeGoat": "https://github.com/OWASP/NodeGoat",                   # npm
+    "crAPI": "https://github.com/OWASP/crAPI",                         # npm + Go + Python microservices
+    "WebGoat": "https://github.com/WebGoat/WebGoat",                   # Maven (parent/BOM resolution)
+    "railsgoat": "https://github.com/OWASP/railsgoat",                 # Ruby (Gemfile.lock)
+    "spring-petclinic-microservices": "https://github.com/spring-petclinic/spring-petclinic-microservices",
     "nodejs-goof": "https://github.com/snyk-labs/nodejs-goof",
     "pygoat": "https://github.com/adeyosemanputra/pygoat",
 }

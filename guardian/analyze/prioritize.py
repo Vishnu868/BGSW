@@ -1,4 +1,5 @@
-"""Contextual, explainable risk score (0-100) per risk item. Deterministic - every point has a reason.
+"""Symbolic prior: contextual, explainable risk score (0-100) per risk item. Every point has a reason.
+The Orchestrator & Triage agent may move this score by at most 20 points, with a reason (see neurosymbolic/rules.py).
 
   base          CVSS x 10 (or severity for non-CVE findings)
   exploitation  +15 on CISA KEV; EPSS >= 0.5 +10, >= 0.1 +5, < 0.01 -5
@@ -69,6 +70,7 @@ def build_items(doc: dict, reach: dict, kev: set, epss: dict) -> list[dict]:
             conf = "high"      # repo-level findings (Dockerfile/workflow lines) are direct evidence
         items.append({
             "id": "", "key": key, "component": cd, "score": round(score, 1), "priority": p,
+            "base_score": round(score, 1), "base_priority": p,
             "priority_label": label, "confidence": conf,
             "factors": [{"reason": a, "points": b} for a, b in factors],
             "reachability": r, "headline": best["title"], "severity": best["severity"], "category": best["category"],

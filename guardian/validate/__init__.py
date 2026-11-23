@@ -97,6 +97,8 @@ def run(run_dir: Path, install: bool = False, test_cmd: str = "", timeout: int =
     else:
         verdict = "partial"
 
+    next_iteration = _next_iteration(run_dir, before, per_action, log)
+
     def sev_count(fs):
         return {s: sum(f["severity"] == s for f in fs) for s in ("critical", "high", "medium", "low")}
 
@@ -109,6 +111,7 @@ def run(run_dir: Path, install: bool = False, test_cmd: str = "", timeout: int =
            "new_findings": [{"title": f["title"], "severity": f["severity"], "rule": f["rule"]} for f in new],
            "sbom_changes": {k: len(v) for k, v in (after.get("changes") or {}).items() if isinstance(v, list)},
            "sbom_changes_detail": after.get("changes"),
+           "next_iteration": next_iteration,
            "after_report": str(out / "guardian.html"),
            "rollback": ap["rollback"] if verdict == "failed" else "not needed"}
     (run_dir / "validation.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
@@ -117,3 +120,53 @@ def run(run_dir: Path, install: bool = False, test_cmd: str = "", timeout: int =
         f"critical {res['before']['by_severity']['critical']} -> {res['after']['by_severity']['critical']}, "
         f"high {res['before']['by_severity']['high']} -> {res['after']['by_severity']['high']}")
     return res
+
+
+def _next_iteration(run_dir: Path, before: dict, per_action: list, log) -> list[dict]:
+    """For findings that survived the fix, the Remediation Planner proposes the next step: usually raising the direct
+    parent that still pulls the vulnerable package to a version whose own dependency tree is clean (deps.dev + OSV).
+    Proposals are verified symbolically and need a NEW plan + approval - nothing is applied automatically."""
+    from ..agents import roles
+    from ..agents.tools import Toolbox
+    from ..llm import Router
+    from ..neurosymbolic import verifier
+    from ..neurosymbolic.facts import Facts
+    facts = Facts(before, offline=False)
+    router = Router(audit=run_dir / "audit.jsonl")
+    seen, out = set(), []
+    for pa in per_action:
+        for rem in pa.get("remaining", []):
+            chain = [x for x in rem["now_via"].split(" > ") if x]
+            if len(chain) < 2:
+                continue
+            parent = chain[0]
+            name, _, ver = parent.rpartition("@")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            sym = facts.safe_upgrade(name, ver, "npm", ver)
+            if not sym.get("version") or sym["version"] == ver:
+                continue
+            proposal = {"action_type": "npm_upgrade_direct", "params": {"package": name, "from": ver, "to": sym["version"]},
+                        "rationale": f"{rem['finding'][:90]} still arrives via {parent}; {name}@{sym['version']} has a "
+                                     f"{'clean' if sym.get('clean_tree') else 'smaller-risk'} dependency tree "
+                                     f"(checked {', '.join(t['version'] for t in sym.get('tried', []))})",
+                        "source": "symbolic (deps.dev + OSV)", "after_action": pa["id"]}
+            item = {"id": pa["id"], "component": {"name": name, "version": ver, "ecosystem": "npm"}, "max_fixed": ver}
+            r = roles.PLANNER.run(router, {"remaining_finding": rem, "symbolic_proposal": proposal}, Toolbox(facts, item),
+                                  purpose=f"next iteration for {name}")
+            if isinstance(r["output"], dict):
+                chk, notes, st = verifier.plan_proposal(dict(r["output"]), r["evidence"], item, facts, _Any())
+                if st != "rejected":
+                    proposal.update({"action_type": chk["action_type"], "params": {**proposal["params"], **chk.get("params", {})},
+                                     "rationale": chk.get("rationale") or proposal["rationale"],
+                                     "source": "Remediation Planner agent (verified)"})
+                proposal["verifier_notes"] = notes
+            out.append(proposal)
+            log(f"[validate] next iteration: {name} {ver} -> {proposal['params']['to']} ({proposal['source']})")
+    return out
+
+
+class _Any:
+    def __contains__(self, _):
+        return True

@@ -30,19 +30,18 @@ def parse_pom(pom: Path, repo: Path, graph: Graph) -> dict:
         x = el.find(p + tag, ns)
         return x.text.strip() if x is not None and x.text else ""
 
-    props = {}
-    pe = root.find(p + "properties", ns)
-    if pe is not None:
-        for child in pe:
-            props[child.tag.split("}")[-1]] = (child.text or "").strip()
-    props["project.version"] = text(root, "version") or text(root.find(p + "parent", ns) or root, "version")
+    from . import more
+    if not more.LOCAL_POMS:
+        more.index_local_poms(repo)
+    props, managed = more.effective(root)        # parent chain + imported BOMs, like Maven itself
 
     def sub(v):
-        return re.sub(r"\$\{([^}]+)\}", lambda m: props.get(m.group(1), m.group(0)), v or "")
-
-    managed = {}
-    for d in root.findall(f"{p}dependencyManagement/{p}dependencies/{p}dependency", ns):
-        managed[f"{text(d, 'groupId')}:{text(d, 'artifactId')}"] = sub(text(d, "version"))
+        for _ in range(6):
+            nv = re.sub(r"\$\{([^}]+)\}", lambda m: props.get(m.group(1), m.group(0)), v or "")
+            if nv == v:
+                break
+            v = nv
+        return v
 
     rel, root_id = _root(pom, repo, graph, "Maven", text(root, "artifactId"))
     unresolved = 0
@@ -55,8 +54,8 @@ def parse_pom(pom: Path, repo: Path, graph: Graph) -> dict:
                                 ecosystem="Maven", direct=True, manifests={rel}, exact=exact),
                       dev=text(d, "scope") in ("test", "provided"))
         graph.link(root_id, c.id)
-    graph.notes.append(f"{rel}: pom.xml - direct dependencies only ({unresolved} versions inherited from a parent/BOM); "
-                       "consume an SBOM (mvn cyclonedx:makeBom) for the full tree")
+    if unresolved:
+        graph.notes.append(f"{rel}: {unresolved} Maven dependency versions could not be resolved from the parent/BOM chain")
     return {"manifest": rel}
 
 

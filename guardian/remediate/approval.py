@@ -33,7 +33,8 @@ def terminal(run_dir: Path, plan: dict, ask=input, log=print) -> dict:
         p = a["params"]
         tgt = p.get("package") or p.get("image") or p.get("action") or p.get("component", "")
         log(f"  {a['id']} {a['type']:<24} {tgt} {p.get('to') or p.get('version') or (p.get('sha') or p.get('digest') or '')[:19]}"
-            f"  [{a['priority']}, compat: {a['compatibility']['level']}]")
+            f"  [{a['priority']}, compat: {a['compatibility']['level']}]"
+            + (f"\n        critic: {a['critic']['concern']}" if a.get("critic") and a["critic"].get("concern") else ""))
     log("\nApprove: type the first 8 characters of the plan hash to approve ALL,")
     log("         or 'A-01,A-03' to approve only some, or 'reject'.")
     ans = ask("> ").strip()
@@ -62,7 +63,9 @@ def web(run_dir: Path, plan: dict, port: int = 8770, log=print) -> dict:
                 f"<td>{html.escape(a['risk'][:90])}<br><small>{a['priority']} · score {a['score']}</small></td>"
                 f"<td>{html.escape(a['rationale'])}<br><small>compat: {html.escape(a['compatibility']['reason'])}<br>"
                 f"rollback: {html.escape(a['rollback'])}</small>"
-                + (f"<br><small><i>AI inference: {html.escape(str(a['ai_inference'].get('risk_summary')))}</i></small>" if a.get('ai_inference') else "")
+                + (f"<br><small><i>Agents' verdict: {html.escape(str(a['ai_inference'].get('risk_summary')))}</i></small>" if a.get('ai_inference') else "")
+                + (f"<br><small><b>Critic:</b> {'agrees' if a['critic']['agree'] else 'DISAGREES'} {html.escape(a['critic'].get('concern', ''))}</small>" if a.get('critic') else "")
+                + (f"<br><small>Planner agent: {html.escape(a['planner']['source'])}, {html.escape(a['planner']['status'])}</small>" if a.get('planner') else "")
                 + "</td></tr>" for a in plan["actions"])
             body = f"""<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Guardian approval</title><style>body{{font:14px system-ui;margin:20px;background:#f6f7f9;color:#16202c}}

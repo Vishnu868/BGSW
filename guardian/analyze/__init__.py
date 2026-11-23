@@ -1,7 +1,9 @@
-"""Stage 3 - Analyze & prioritise: context (reachability, exploitability, exposure) + AI investigation.
+"""Stage 3 - Analyze & prioritise (neurosymbolic, multi-agent).
 
-Input : runs/<repo>/findings.json (from `guardian scan`)
-Output: runs/<repo>/analysis.json, analysis.md
+  symbolic prior : reachability (imports), EPSS + CISA KEV, explainable base score -> P1..P4
+  agents         : Orchestrator & Triage lead, Vulnerability Analyst, Supply-Chain Forensics, Critic
+  verifier       : every agent answer checked against facts and rules (guardian/neurosymbolic)
+Input : runs/<repo>/findings.json      Output: analysis.json, analysis.md, guardian.html (with agent verdicts)
 """
 from __future__ import annotations
 
@@ -9,12 +11,10 @@ import json
 from pathlib import Path
 
 from .. import audit
+from ..agents import orchestrator
 from ..llm import Router
-from . import agent, intel, prioritize, reachability
-
-SUMMARY_SYSTEM = """You write the executive summary of a software supply chain risk review for engineering leads.
-Use only the data given. Be specific (package names, versions, priorities). 4-6 sentences.
-Return JSON: {"summary": "...", "top_actions": ["...", "...", "..."]}"""
+from ..neurosymbolic.facts import Facts
+from . import intel, prioritize, reachability
 
 
 def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
@@ -25,69 +25,81 @@ def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
     audit.log(trail, "analyze_start", {"llm": router.describe()})
     log(f"[analyze] LLM chain: {router.describe()}")
 
-    log("[analyze] reachability: searching application source for imports")
+    log("[analyze] symbolic prior: reachability, EPSS + CISA KEV, base scores")
     reach = reachability.analyse(doc, repo)
     cves = sorted({f["data"].get("cve") for f in doc["findings"] if f["data"].get("cve")})
-    log(f"[analyze] exploit intelligence for {len(cves)} CVEs (EPSS + CISA KEV)")
     kev = intel.kev(offline)
     epss = intel.epss(cves, offline)
     items = prioritize.build_items(doc, reach, kev, epss)
+    facts = Facts(doc, offline, {"kev": kev, "epss": epss})
 
-    chosen = items[:top]
-    supply_chain = [i for i in items if (i["category"] in ("1.3", "1.4", "1.6") and i["severity"] in ("critical", "high"))
-                    and i not in chosen][:3]
-    investigations = []
-    for it in chosen + supply_chain:
-        log(f"[analyze] investigating {it['id']} {it['headline'][:70]}")
-        inv = agent.investigate(it, doc, reach, {"kev": kev, "epss": epss}, repo, router, offline)
-        it["ai"] = inv["result"]
-        investigations.append(inv)
+    log(f"[analyze] multi-agent investigation of the top {top} risks (+ high supply-chain risks)")
+    agents = orchestrator.run(items, facts, router, top=top, log=log)
+    items.sort(key=lambda i: (-i["score"], i["headline"]))
+    for n, it in enumerate(items, 1):
+        it["rank"] = n
 
-    summary, meta = (None, {"provider": "rules"})
-    if router.enabled:
-        brief = [{k: i[k] for k in ("id", "headline", "priority", "score", "confidence")} |
-                 {"verdict": i.get("ai", {}).get("verdict"), "action": i.get("ai", {}).get("recommended_action")}
-                 for i in items[:12]]
-        summary, meta = router.ask_json(SUMMARY_SYSTEM, json.dumps({"repo": doc["repository"]["repo"],
-                                                                    "summary": doc["summary"], "top_items": brief}),
-                                        purpose="executive summary")
-    if not summary:
+    summary = agents.get("summary")
+    if summary:
+        summary = {"summary": summary, "top_actions": [f"{i['id']}: {i['recommendation']}" for i in items[:3]]}
+        source = "ai (lead agent)"
+    else:
         p = {k: sum(i["priority"] == k for i in items) for k in ("P1", "P2", "P3", "P4")}
         summary = {"summary": f"{len(items)} risk items: {p['P1']} P1 (fix now), {p['P2']} P2, {p['P3']} P3, {p['P4']} P4. "
                               f"Top item: {items[0]['headline'] if items else 'none'}.",
                    "top_actions": [f"{i['id']}: {i['recommendation']}" for i in items[:3]]}
-    out = {"schema": "guardian.analysis/v1", "repository": doc["repository"]["repo"], "repo_path": str(repo),
-           "llm": router.describe(), "summary": summary, "summary_source": meta.get("provider"),
+        source = "rules"
+    out = {"schema": "guardian.analysis/v2", "repository": doc["repository"]["repo"], "repo_path": str(repo),
+           "llm": router.describe(), "summary": summary, "summary_source": source,
            "reachability_files": reach.get("_meta", {}).get("source_files", 0),
            "counts": {k: sum(i["priority"] == k for i in items) for k in ("P1", "P2", "P3", "P4")},
-           "items": items, "investigations": investigations, "llm_calls": router.calls}
+           "agents": agents["agents"], "routing": agents["routing"], "cases": agents["cases"],
+           "review_queue": agents["review_queue"], "items": items, "llm_calls": router.calls}
     (run_dir / "analysis.json").write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
     (run_dir / "analysis.md").write_text(markdown(out), encoding="utf-8")
-    audit.log(trail, "analyze_done", {"items": len(items), "investigated": len(investigations), "counts": out["counts"]})
-    log(f"[analyze] {len(items)} risk items -> {out['counts']}; investigated {len(investigations)}")
+    _refresh_graph_page(run_dir, out)
+    audit.log(trail, "analyze_done", {"items": len(items), "cases": len(agents["cases"]), "counts": out["counts"],
+                                      "review_queue": len(agents["review_queue"])})
+    log(f"[analyze] {len(items)} risk items -> {out['counts']}; {len(agents['cases'])} agent cases; "
+        f"{len(agents['review_queue'])} need human review")
     return out
 
 
+def _refresh_graph_page(run_dir: Path, analysis: dict) -> None:
+    from ..report import html
+    data_f = run_dir / "graph_data.json"
+    if data_f.exists():
+        data = json.loads(data_f.read_text(encoding="utf-8"))
+        data["analysis"] = html.analysis_view(analysis)
+        (run_dir / "guardian.html").write_text(html.render(data), encoding="utf-8")
+
+
 def markdown(a: dict) -> str:
-    L = [f"# Risk analysis - {a['repository']}", "", f"LLM: {a['llm']}", "", "## Summary", "",
+    L = [f"# Risk analysis - {a['repository']}", "", f"LLM: {a['llm']}", "",
+         "Agents: " + " · ".join(f"{x['id']} {x['name']}" for x in a["agents"]), "", "## Summary", "",
          a["summary"].get("summary", ""), ""]
-    if a["summary"].get("top_actions"):
-        L += [f"- {x}" for x in a["summary"]["top_actions"]] + [""]
-    L += [f"*Summary source: {a['summary_source']}. AI text is inference; the evidence below is verified.*", "",
-          "## Prioritised risks", "", "| Rank | Priority | Score | Risk | Reachability | Confidence | AI verdict |",
+    L += [f"- {x}" for x in a["summary"].get("top_actions", [])] + ["",
+          f"*Summary source: {a['summary_source']}. AI text is inference; evidence is verified.*", "",
+          "## Prioritised risks", "", "| Rank | Priority | Score (base) | Risk | Reachability | Verdict | Agent |",
           "|---|---|---|---|---|---|---|"]
     for i in a["items"][:30]:
         ai = i.get("ai") or {}
-        L.append(f"| {i['rank']} | {i['priority']} | {i['score']} | {i['headline'][:80].replace('|', '/')} | "
-                 f"{i['reachability']['status']} | {i['confidence']} | {ai.get('verdict', '-')} |")
-    L += ["", "## Investigations", ""]
-    for inv in a["investigations"]:
-        r = inv["result"]
-        L += [f"### {inv['item']} ({inv['provider']})", "",
-              f"- verdict **{r.get('verdict')}**, exploitable in context: {r.get('exploitable_in_context')}, "
-              f"confidence {r.get('confidence')}",
-              f"- action: {r.get('recommended_action')} {r.get('target_version') or ''}",
-              f"- {r.get('risk_summary')}"]
-        L += [f"- step {s['step']}: `{s['tool']}({json.dumps(s['args'])})` -> {s['evidence_id']} - {s['why']}" for s in inv["steps"]]
-        L += [f"- checker: {n}" for n in inv.get("checker_notes", [])] + [""]
+        L.append(f"| {i['rank']} | {i['priority']} | {i['score']} ({i['base_score']}) | {i['headline'][:70].replace('|', '/')} | "
+                 f"{i['reachability']['status']} | {ai.get('verdict', '-')} | {ai.get('agent', '-')} ({ai.get('source', '-')}) |")
+    L += ["", "## Needs human review", ""]
+    L += [f"- {q['id']}: {q['headline'][:80]} - {q['reason']}" for q in a["review_queue"]] or ["- none"]
+    L += ["", "## Agent case files", ""]
+    for cid, case in a["cases"].items():
+        L += [f"### {cid} {case['headline'][:90]}", ""]
+        for e in case["entries"]:
+            o = e["output"]
+            what = (o.get("verdict") or o.get("priority") or ("agree" if o.get("agree") else "disagree" if "agree" in o else "")
+                    or json.dumps(o)[:80])
+            L.append(f"- **{e['agent']}** ({e.get('source', 'ai')}, {e['status']}): {what}"
+                     + (f" - {o.get('risk_summary') or o.get('reason') or o.get('concern') or ''}"[:300]))
+            for s in e.get("steps") or []:
+                L.append(f"  - step {s['step']}: `{s['tool']}({json.dumps(s['args'])})` -> {s['evidence_id']} {s['why']}")
+            for n in e.get("verifier_notes") or []:
+                L.append(f"  - verifier: {n}")
+        L.append("")
     return "\n".join(L) + "\n"

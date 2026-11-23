@@ -1,7 +1,8 @@
-"""Turn prioritised risk items into a remediation plan made ONLY of allow-listed action types.
+"""Stage 4 - Plan (neurosymbolic): rule-based proposals -> Remediation Planner agent may improve each one ->
+symbolic verifier checks it -> Critic agent reviews the whole plan.
 
-Every action carries: rationale, expected risk reduction, compatibility impact, rollback, evidence.
-The plan is identified by a SHA-256 hash of its actions; approval is bound to that exact hash.
+Only allow-listed action types are possible. Every action carries rationale, expected risk reduction, compatibility
+impact, rollback and evidence. The plan is identified by a SHA-256 hash; approval is bound to that exact hash.
 """
 from __future__ import annotations
 
@@ -10,21 +11,17 @@ import json
 import re
 from pathlib import Path
 
-from ..analyze.agent import published_versions
+from .. import audit
+from ..agents import roles
+from ..agents.tools import Toolbox
 from ..detect.osv import vkey
+from ..llm import Router
+from ..neurosymbolic import rules, verifier
+from ..neurosymbolic.facts import Facts, published_versions
 from . import resolvers
 
-ALLOWED = {
-    "npm_upgrade_direct": "Upgrade a direct npm dependency in package.json",
-    "npm_override_transitive": "Force a safe version of a transitive npm dependency (package.json overrides)",
-    "npm_replace": "Replace a package (e.g. typosquat -> genuine) in package.json and its import statements",
-    "npm_remove": "Remove an unused direct npm dependency",
-    "pypi_upgrade": "Pin a Python requirement to a fixed version",
-    "docker_pin_digest": "Pin a container base image to its sha256 digest",
-    "action_pin_sha": "Pin a GitHub Action to a full commit SHA",
-    "block": "Block the change/component (policy deny, no file change)",
-    "escalate": "Escalate for security review (no automatic change)",
-}
+ALLOWED = rules.REMEDIATION_ACTIONS
+_FACTS: Facts | None = None
 
 
 def plan_hash(actions: list[dict]) -> str:
@@ -58,7 +55,13 @@ def _major(v: str) -> int:
 
 
 def _pick_target(name: str, eco: str, need: str, ai_target: str | None, offline: bool) -> tuple[str, str]:
-    """Smallest published version >= the fixed version, staying in the fixed version's major line."""
+    """Smallest-impact published version >= the fixed version whose own dependency tree has no known CVE
+    (checked with deps.dev + OSV); falls back to the latest release in the fixed version's major line."""
+    if eco == "npm" and need and _FACTS is not None:
+        res = _FACTS.safe_upgrade(name, need, eco)
+        if res.get("version") and res.get("clean_tree"):
+            return res["version"], (f"smallest major line whose dependency tree has no known vulnerability "
+                                    f"(checked {', '.join(t['version'] for t in res['tried'])})")
     vs = published_versions(name, eco, offline) or []
     if ai_target and ai_target in vs and (not need or vkey(ai_target) >= vkey(need)):
         return ai_target, "AI-suggested version, verified in the registry"
@@ -73,22 +76,15 @@ def _pick_target(name: str, eco: str, need: str, ai_target: str | None, offline:
     return need, "advisory fixed version (registry list unavailable)"
 
 
-def _compat(cur: str, target: str) -> dict:
-    if not cur or not target:
-        return {"level": "unknown", "reason": "version information incomplete"}
-    if _major(target) > _major(cur):
-        return {"level": "major", "reason": f"major version change {cur} -> {target}: breaking API changes likely, run full tests"}
-    if _major(cur) == 0 and vkey(target)[:2] > vkey(cur)[:2]:
-        return {"level": "major", "reason": f"{cur} -> {target}: in 0.x versions a minor bump may break the API (semver), run full tests"}
-    if vkey(target)[:2] > vkey(cur)[:2]:
-        return {"level": "minor", "reason": f"minor version change {cur} -> {target}"}
-    return {"level": "patch", "reason": f"patch-level change {cur} -> {target}"}
+_compat = rules.compatibility
 
 
 def build(run_dir: Path, analysis: dict, max_actions: int = 8, include: tuple = ("P1", "P2"), offline: bool = False,
           log=print) -> dict:
+    global _FACTS
     doc = json.loads((run_dir / "findings.json").read_text(encoding="utf-8"))
     repo = Path(analysis["repo_path"])
+    _FACTS = Facts(doc, offline)
     mans = _manifests(run_dir)
     findings = {f["id"]: f for f in doc["findings"]}
     actions, covered = [], {}
@@ -98,7 +94,7 @@ def build(run_dir: Path, analysis: dict, max_actions: int = 8, include: tuple = 
         actions.append({"id": f"A-{len(actions) + 1:02d}", "type": typ, "description": ALLOWED[typ], "params": params,
                         "risk_item": item["id"], "risk": item["headline"], "priority": item["priority"],
                         "score": item["score"], "finding_ids": resolves, "rationale": rationale,
-                        "ai_inference": ({k: item["ai"].get(k) for k in ("verdict", "risk_summary", "confidence", "source")}
+                        "ai_inference": ({k: item["ai"].get(k) for k in ("verdict", "risk_summary", "confidence", "source", "agent")}
                                          if item.get("ai") else None),
                         "expected_risk_reduction": f"removes {len(resolves)} finding(s); risk score {item['score']} -> ~0",
                         "compatibility": compat, "rollback": rollback, "requires_code_change": code_change,
@@ -219,8 +215,9 @@ def build(run_dir: Path, analysis: dict, max_actions: int = 8, include: tuple = 
                 "High-priority risk without a safe automatic fix: needs a human decision.",
                 {"level": "unknown", "reason": ""}, "n/a", item["finding_ids"])
 
+    _agents_refine(run_dir, analysis, actions, doc, offline, log)
     h = plan_hash(actions)
-    plan = {"schema": "guardian.plan/v1", "repository": analysis["repository"], "repo_path": str(repo),
+    plan = {"schema": "guardian.plan/v2", "repository": analysis["repository"], "repo_path": str(repo),
             "plan_hash": h, "actions": actions, "covered_by_other_actions": covered,
             "allowed_action_types": ALLOWED, "status": "awaiting_approval"}
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=1), encoding="utf-8")
@@ -245,8 +242,74 @@ def markdown(p: dict) -> str:
         L += [f"### {a['id']} {a['type']}", "", f"- Why: {a['rationale']}", f"- Expected: {a['expected_risk_reduction']}",
               f"- Compatibility: {a['compatibility']['reason']}", f"- Rollback: {a['rollback']}"]
         if a.get("ai_inference"):
-            L.append(f"- AI inference ({a['ai_inference'].get('source')}): {a['ai_inference'].get('risk_summary')}")
+            L.append(f"- Agents' verdict ({a['ai_inference'].get('source')}): {a['ai_inference'].get('risk_summary')}")
+        if a.get("planner"):
+            L.append(f"- Remediation Planner agent: {a['planner']['source']}, {a['planner']['status']}"
+                     + (" - changed the rule-based proposal" if a['planner'].get('changed_from') else ""))
+            L += [f"  - verifier: {n}" for n in a["planner"].get("notes", []) if n]
+        if a.get("critic"):
+            L.append(f"- Critic ({a['critic']['source']}): {'agrees' if a['critic']['agree'] else 'DISAGREES'}"
+                     + (f" - {a['critic']['concern']}" if a['critic']['concern'] else ""))
         L.append("")
     if p["covered_by_other_actions"]:
         L += ["## Covered by other actions", ""] + [f"- {k}: {v}" for k, v in p["covered_by_other_actions"].items()]
     return "\n".join(L) + "\n"
+
+
+class _RepoFiles:
+    def __init__(self, repo: Path):
+        self.repo = repo
+
+    def __contains__(self, rel) -> bool:
+        return (self.repo / str(rel)).is_file()
+
+
+def _agents_refine(run_dir: Path, analysis: dict, actions: list, doc: dict, offline: bool, log) -> None:
+    """Remediation Planner agent may improve each rule-based proposal (verified symbolically); the Critic agent then
+    reviews the whole plan. Without an LLM the rule-based plan is used unchanged and labelled as such."""
+    router = Router(audit=run_dir / "audit.jsonl")
+    items = {i["id"]: i for i in analysis["items"]}
+    repo_files = _RepoFiles(Path(analysis["repo_path"]))
+    for a in actions:
+        item = items.get(a["risk_item"], {})
+        if a["type"] == "block" or not item:
+            a["planner"] = {"source": "rules", "status": "kept", "notes": ["block actions are fixed by policy"]}
+            continue
+        ctx = {"risk": {k: item.get(k) for k in ("id", "headline", "category", "max_fixed", "component", "reachability")},
+               "agents_verdict": item.get("ai"),
+               "rule_based_proposal": {"action_type": a["type"], "params": a["params"], "rationale": a["rationale"]}}
+        r = roles.PLANNER.run(router, ctx, Toolbox(_FACTS, item), purpose=a["id"])
+        if not isinstance(r["output"], dict):
+            a["planner"] = {"source": "rules", "status": "kept", "notes": [r["error"]] if r["error"] else []}
+            continue
+        out, notes, st = verifier.plan_proposal(dict(r["output"]), r["evidence"], item, _FACTS, repo_files)
+        info = {"source": "ai", "status": st, "notes": notes, "steps": r["steps"], "provider": r["provider"]}
+        if st != "rejected" and (out["action_type"] != a["type"] or out.get("params") != a["params"]):
+            old = {"type": a["type"], "params": a["params"]}
+            params = dict(a["params"])
+            params.update({k: v for k, v in out["params"].items() if v not in (None, "")})
+            a["type"], a["params"], a["description"] = out["action_type"], params, ALLOWED[out["action_type"]]
+            a["rationale"] = f"{out.get('rationale') or a['rationale']} (improved by the Remediation Planner agent, verified)"
+            if params.get("to"):
+                a["compatibility"] = rules.compatibility(params.get("from", ""), str(params["to"]))
+            info["changed_from"] = old
+        a["planner"] = info
+        log(f"[plan] {a['id']} planner agent: {st}{' (changed)' if info.get('changed_from') else ''}")
+    # Critic reviews the whole plan in one pass
+    view = [{"id": a["id"], "type": a["type"], "params": a["params"], "risk": a["risk"][:100],
+             "compatibility": a["compatibility"]["level"], "rationale": a["rationale"][:200]} for a in actions]
+    r = roles.CRITIC.run(router, {"plan": view}, Toolbox(_FACTS, {}), purpose="review plan")
+    if isinstance(r["output"], dict):
+        out, notes, st = verifier.critic(r["output"], r["evidence"], {a["id"] for a in actions})
+        reviews, src = {x["id"]: x for x in out["reviews"]}, "ai"
+    else:
+        reviews, notes, st, src = {}, [r["error"]] if r["error"] else [], "fallback", "rules"
+    for a in actions:
+        rv = reviews.get(a["id"])
+        if rv is None:   # rule-based critic: flag what always deserves a second look
+            concern = ("major version change - run the full test suite before merging"
+                       if a["compatibility"]["level"] == "major" else
+                       "no automatic fix - needs a human decision" if a["type"] == "escalate" else "")
+            rv = {"id": a["id"], "agree": True, "concern": concern, "suggested_verdict": None}
+        a["critic"] = dict(rv, source=src)
+    audit.log(run_dir / "audit.jsonl", "plan_reviewed", {"critic": src, "disagreements": [a["id"] for a in actions if not a["critic"]["agree"]]})

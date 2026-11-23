@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..model import Graph
-from . import npm, others, python
+from . import more, npm, others, python
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "env", "__pycache__", "dist", "build", ".tox",
              "vendor", "bower_components", ".next", "target", "site-packages"}
@@ -33,6 +33,7 @@ def walk(repo: Path):
 def discover(repo: Path) -> Inventory:
     repo = repo.resolve()
     inv = Inventory(repo=repo)
+    more.LOCAL_POMS.clear()
     found: dict[str, list[Path]] = {}
     for p in walk(repo):
         n = p.name.lower()
@@ -49,6 +50,10 @@ def discover(repo: Path) -> Inventory:
             found.setdefault("maven", []).append(p)
         elif n == "go.mod":
             found.setdefault("go", []).append(p)
+        elif n == "gemfile.lock":
+            found.setdefault("ruby", []).append(p)
+        elif n == "composer.lock":
+            found.setdefault("php", []).append(p)
         elif n.endswith((".cdx.json", "bom.json")) or n == "sbom.json":
             found.setdefault("cyclonedx", []).append(p)
         elif n == "dockerfile" or n.startswith("dockerfile.") or n.endswith(".dockerfile") or n == "containerfile":
@@ -63,6 +68,7 @@ def discover(repo: Path) -> Inventory:
     adapters = [
         ("npm", npm.parse), ("poetry", python.parse_poetry), ("pipfile", python.parse_pipfile_lock),
         ("requirements", python.parse_requirements), ("maven", others.parse_pom), ("go", others.parse_gomod),
+        ("ruby", more.parse_gemfile_lock), ("php", more.parse_composer_lock),
         ("cyclonedx", others.parse_cyclonedx),
     ]
     for kind, fn in adapters:

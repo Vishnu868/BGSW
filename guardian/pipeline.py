@@ -56,6 +56,8 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
         gen_locks: bool = True, log=print) -> Path:
     from .detect import cicd, container, lockfile, osv, packages
     repo = fetch(target, ROOT / "targets")
+    import os
+    os.environ["GUARDIAN_OFFLINE"] = "1" if offline else "0"
     out = out_root / repo.name
     out.mkdir(parents=True, exist_ok=True)
     log(f"[1/4] Discover  {repo}")
@@ -104,7 +106,9 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
     report = text_report.findings_json(g, findings, meta, changes)
     (out / "findings.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     (out / "report.md").write_text(text_report.markdown(report), encoding="utf-8")
-    (out / "guardian.html").write_text(html_report.build(g, findings, meta, changes), encoding="utf-8")
+    page_data = html_report.build_data(g, findings, meta, changes)
+    (out / "graph_data.json").write_text(json.dumps(page_data, default=str), encoding="utf-8")
+    (out / "guardian.html").write_text(html_report.render(page_data), encoding="utf-8")
     log(text_report.console_summary(report))
     log(f"Outputs: {out}  (guardian.html, findings.json, report.md, sbom.cdx.json)")
     return out

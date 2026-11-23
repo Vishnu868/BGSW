@@ -16,7 +16,7 @@ python scripts\setup.py                             # portable Node.js (checksum
 python -m guardian scan targets\juice-shop          # any folder or git URL works
 python -m guardian scan https://github.com/snyk-labs/nodejs-goof
 python -m http.server 8765 --directory runs         # open http://localhost:8765/juice-shop/guardian.html
-python -m unittest discover -s tests                # 22 offline regression tests
+python -m unittest discover -s tests                # 28 offline regression tests
 ```
 
 No pip install needed: the Guardian uses only the Python 3.11+ standard library.
@@ -69,7 +69,13 @@ repo / git URL
 ```
 
 ```
-  ├─ 4. ANALYZE   guardian/analyze/        python -m guardian analyze <repo>
+  ├─ 4. ANALYZE   guardian/analyze/ + guardian/agents/ + guardian/neurosymbolic/   python -m guardian analyze <repo>
+  │     FIVE AGENTS on a shared case file, every answer checked by the symbolic verifier:
+  │       1 Orchestrator & Triage (lead)  routes cases, sets final priority (max ±20 vs the symbolic score)
+  │       2 Vulnerability Analyst         is the CVE exploitable in THIS app?
+  │       3 Supply-Chain Forensics        typosquats, install scripts, tampering, containers, CI/CD
+  │       4 Remediation Planner           safest allow-listed fix (checks the fix's own dependency tree)
+  │       5 Critic / Reviewer             independent second opinion; disagreement -> human review queue
   │     reachability.py  is the package imported by app code? (file:line evidence)
   │     intel.py         EPSS exploit probability + CISA Known-Exploited list (public, no key)
   │     prioritize.py    explainable 0-100 score: CVSS, exploitation, dev-only, reachability, directness -> P1..P4
@@ -106,7 +112,8 @@ If a model name is retired, `llm-check` prints the models the key can use.
 
 ## Day 2 quick start
 ```powershell
-python -m guardian analyze juice-shop            # priorities + AI investigation  -> analysis.md
+python -m guardian analyze juice-shop            # 5 agents + verifier            -> analysis.md, guardian.html
+python -m guardian review juice-shop             # human review queue (optional, non-blocking)
 python -m guardian plan juice-shop               # remediation plan               -> plan.md
 python -m guardian approve juice-shop --web      # human approval (http://127.0.0.1:8770)
 python -m guardian apply juice-shop              # sandbox branch + remediation.patch
@@ -119,11 +126,17 @@ odejs-goof       # the whole loop on another repo
 
 ## Tested on (same code, no changes)
 
-| Repo | Ecosystem | Components | Highlights |
+| Repo | Ecosystem | Components (direct) | Notes |
 |---|---|---|---|
-| OWASP Juice Shop | npm (server + Angular frontend) | 1,656 (154 direct) | jsonwebtoken 0.4.0 CVE chain, `ngy-cookie` typosquat (claims `salemdar/ngx-cookie`), unpinned 3rd-party actions, EOL node:20 images |
-| snyk-labs/nodejs-goof | npm (committed lockfile v2) | 980 | many vulnerable transitive deps, old base image |
-| pygoat | Python (25 requirements files) | 98 (39 transitive via deps.dev) | old Django CVEs, unpinned requirements, many Dockerfiles |
+| OWASP Juice Shop | npm (server + Angular) | 1,656 (154) | jsonwebtoken 0.4.0 chain, `ngy-cookie` typosquat, unpinned actions, EOL node:20 images |
+| OWASP NodeGoat | npm | 1,091 (36) | old Express stack, many vulnerable transitive deps |
+| OWASP crAPI | npm + Go + Python microservices | 1,877 (112) | several services, many Dockerfiles |
+| OWASP WebGoat | Maven (parent/BOM versions resolved from Maven Central) | 264 (47) | transitive tree via deps.dev |
+| OWASP RailsGoat | Ruby (Gemfile.lock) | 167 (38) | full graph from the lockfile |
+| Spring PetClinic Microservices | Maven, 9 modules | 604 (46) | multi-module parent resolution |
+| nodejs-goof / pygoat | npm / Python | 980 / 98 | |
+
+`python scripts/setup.py` clones all of them into `targets/`.
 
 ## Safety and responsible AI
 - Read-only analysis: target repos are cloned, never built or executed; install scripts are never run.
