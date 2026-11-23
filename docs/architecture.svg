@@ -34,7 +34,7 @@
 <text x="306" y="192" class="l">find manifests · lockfiles ·</text>
 <text x="306" y="213" class="l">Dockerfiles · CI workflows</text>
 <text x="306" y="234" class="l">adapters: npm lockfile v1–v3 ·</text>
-<text x="306" y="255" class="l">Python · Maven · Go · CycloneDX</text>
+<text x="306" y="255" class="l">Python · Maven · Go · Ruby · PHP</text>
 <text x="306" y="276" class="l">deps.dev fills lockfile-less trees</text>
 <text x="306" y="297" class="l b">→ dependency graph + paths</text>
 <rect x="690" y="134" width="420" height="210" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
@@ -59,64 +59,61 @@
 <path d="M1110 239 L1146 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <rect x="30" y="384" width="1440" height="286" rx="16" fill="#fafbfd" stroke="#d5dbe3"/>
 <text x="50" y="408" class="bt">DAY 2 · BRAIN</text>
-<text x="290" y="408" class="bs">python -m guardian analyze &lt;repo&gt;  →  what matters most, and why</text>
-<rect x="50" y="424" width="360" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
-<text x="66" y="454" class="t" fill="#1f4e9c">3 · ANALYZE: context</text>
-<text x="396" y="452" class="tag" text-anchor="end" fill="#1f4e9c">deterministic engine</text>
-<text x="66" y="482" class="l">reachability.py  imported? file:line</text>
-<text x="66" y="503" class="l">intel.py  EPSS + CISA KEV</text>
-<text x="66" y="524" class="l">prioritize.py  explainable score:</text>
-<text x="66" y="545" class="l">  CVSS · exploitation · dev-only ·</text>
-<text x="66" y="566" class="l">  reachability · directness</text>
-<text x="66" y="587" class="l b">→ P1 · P2 · P3 · P4 risk items</text>
-<rect x="450" y="424" width="460" height="230" rx="12" fill="#f1eafa" stroke="#6b3fa0" stroke-width="2"/>
-<text x="466" y="454" class="t" fill="#6b3fa0">AI INVESTIGATOR (one per top risk)</text>
+<text x="290" y="408" class="bs">python -m guardian analyze &lt;repo&gt;  →  5 agents + neurosymbolic verifier</text>
+<rect x="50" y="424" width="290" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="66" y="454" class="t" fill="#1f4e9c">3 · SYMBOLIC PRIOR</text>
+<text x="66" y="482" class="l">reachability: imported?</text>
+<text x="66" y="503" class="l">  (file:line)</text>
+<text x="66" y="524" class="l">EPSS + CISA KEV</text>
+<text x="66" y="545" class="l">explainable base score</text>
+<text x="66" y="566" class="l">CVSS · dev-only · direct</text>
+<text x="66" y="587" class="l b">→ P1–P4 prior</text>
+<rect x="370" y="424" width="540" height="230" rx="12" fill="#f1eafa" stroke="#6b3fa0" stroke-width="2"/>
+<text x="386" y="454" class="t" fill="#6b3fa0">FIVE AGENTS · shared case file</text>
 <text x="896" y="452" class="tag" text-anchor="end" fill="#6b3fa0">AI agent</text>
-<text x="466" y="482" class="l">picks read-only tools one at a time (≤5 steps):</text>
-<text x="466" y="503" class="l">item_details · dependency_paths · code_usage ·</text>
-<text x="466" y="524" class="l">advisory · exploit_intel · registry_info ·</text>
-<text x="466" y="545" class="l">registry_versions · baseline_change → E1..En</text>
-<text x="466" y="566" class="l b">evidence checker: cite real evidence ids,</text>
-<text x="466" y="587" class="l b">versions must exist, CVEs must be in evidence,</text>
-<text x="466" y="608" class="l b">confidence &lt; 0.6 → human review</text>
-<rect x="950" y="424" width="250" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
-<text x="966" y="454" class="t" fill="#1f4e9c">LLM ROUTER</text>
-<text x="966" y="482" class="l">Claude  (Anthropic SDK)</text>
-<text x="966" y="503" class="l">   ↓ on failure</text>
-<text x="966" y="524" class="l">Gemini  (REST)</text>
-<text x="966" y="545" class="l">   ↓</text>
-<text x="966" y="566" class="l">Groq  (REST)</text>
-<text x="966" y="587" class="l">   ↓</text>
-<text x="966" y="608" class="l b">rule-based logic (no key)</text>
+<text x="386" y="482" class="l b">1 Orchestrator &amp; Triage (lead): routes cases, final priority</text>
+<text x="386" y="503" class="l b">2 Vulnerability Analyst: is the CVE exploitable in this app?</text>
+<text x="386" y="524" class="l b">3 Supply-Chain Forensics: fakes · scripts · tampering · CI</text>
+<text x="386" y="545" class="l b">4 Remediation Planner: safest fix (in PLAN and VALIDATE)</text>
+<text x="386" y="566" class="l b">5 Critic: independent second opinion → review queue</text>
+<text x="386" y="587" class="l">read-only tools · ≤5 steps each · Claude → Gemini → Groq → rules</text>
+<rect x="940" y="424" width="270" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
+<text x="956" y="454" class="t" fill="#1f4e9c">NEUROSYMBOLIC VERIFIER</text>
+<text x="956" y="482" class="l">facts: graph · OSV ·</text>
+<text x="956" y="503" class="l">registry · deps.dev</text>
+<text x="956" y="524" class="l">rules: allow-list · semver</text>
+<text x="956" y="545" class="l">· version exists · ±20</text>
+<text x="956" y="566" class="l b">no cited evidence → reject</text>
+<text x="956" y="587" class="l b">conf &lt; 0.6 → human review</text>
 <rect x="1240" y="424" width="210" height="230" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
 <text x="1256" y="454" class="t" fill="#5b6876">analysis.json</text>
-<text x="1256" y="482" class="l">prioritised risks</text>
-<text x="1256" y="503" class="l">verdicts labelled</text>
-<text x="1256" y="524" class="l">AI or rules</text>
-<text x="1256" y="545" class="l">(inference, separate</text>
-<text x="1256" y="566" class="l">from evidence)</text>
-<text x="1256" y="587" class="l">executive summary</text>
-<path d="M1300 344 L1300 372 L230 372 L230 420" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<text x="1256" y="482" class="l">final priorities</text>
+<text x="1256" y="503" class="l">agent case files</text>
+<text x="1256" y="524" class="l">verifier notes</text>
+<text x="1256" y="545" class="l">human review queue</text>
+<text x="1256" y="566" class="l">guardian.html</text>
+<text x="1256" y="587" class="l">(agents tab)</text>
+<path d="M1300 344 L1300 372 L195 372 L195 420" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <text x="640" y="366" class="al">findings.json</text>
-<path d="M410 539 L446 539" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
-<path d="M910 520 L946 520" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
-<path d="M950 556 L914 556" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
-<path d="M680 424 L680 415 L1345 415 L1345 420" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
-<text x="1000" y="399" class="al">verdicts</text>
+<path d="M340 539 L366 539" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M910 520 L936 520" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M940 556 L914 556" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<path d="M640 424 L640 415 L1345 415 L1345 420" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
+<text x="980" y="399" class="al">verified verdicts</text>
 <rect x="30" y="696" width="1440" height="266" rx="16" fill="#fafbfd" stroke="#d5dbe3"/>
 <text x="50" y="720" class="bt">DAY 2 · SHIELD</text>
 <text x="290" y="720" class="bs">plan → approve → apply → validate → report   (nothing changes without a human yes)</text>
 <rect x="50" y="736" width="240" height="212" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
 <text x="66" y="766" class="t" fill="#1f4e9c">4 · PLAN</text>
-<text x="66" y="794" class="l">9 allow-listed actions:</text>
-<text x="66" y="815" class="l">upgrade · override ·</text>
-<text x="66" y="836" class="l">replace · pin digest/SHA</text>
-<text x="66" y="857" class="l">· block · escalate</text>
-<text x="66" y="878" class="l">+ compat · rollback</text>
+<text x="66" y="794" class="l">rule proposal →</text>
+<text x="66" y="815" class="l">Planner agent →</text>
+<text x="66" y="836" class="l">verifier → Critic</text>
+<text x="66" y="857" class="l">9 allow-listed actions</text>
+<text x="66" y="878" class="l">fix&#x27;s own tree checked</text>
 <text x="66" y="899" class="l b">plan = SHA-256 hash</text>
 <rect x="320" y="736" width="230" height="212" rx="12" fill="#fdf0e4" stroke="#c2580a" stroke-width="2"/>
 <text x="336" y="766" class="t" fill="#c2580a">5 · APPROVE</text>
-<text x="336" y="794" class="l">terminal or web page</text>
+<text x="336" y="794" class="l">review queue (optional)</text>
 <text x="336" y="815" class="l">approval bound to</text>
 <text x="336" y="836" class="l">the plan hash</text>
 <text x="336" y="857" class="l">plan edited → void</text>
@@ -133,13 +130,13 @@
 <text x="886" y="766" class="t" fill="#1f4e9c">7 · VALIDATE</text>
 <text x="886" y="794" class="l">lockfile resolve</text>
 <text x="886" y="815" class="l">(+ npm ci / tests)</text>
-<text x="886" y="836" class="l">rescan with DISCOVER+DETECT</text>
-<text x="886" y="857" class="l">before vs after, new risks?</text>
+<text x="886" y="836" class="l">rescan, before vs after</text>
+<text x="886" y="857" class="l">Planner agent: next fix</text>
 <text x="886" y="878" class="l b">verified · partial · failed</text>
 <rect x="1180" y="736" width="270" height="212" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
 <text x="1196" y="766" class="t" fill="#5b6876">REPORT + POLICY</text>
 <text x="1196" y="794" class="l b">guardian_report.html</text>
-<text x="1196" y="815" class="l">finding → evidence → AI →</text>
+<text x="1196" y="815" class="l">evidence → agents →</text>
 <text x="1196" y="836" class="l">approval → result →</text>
 <text x="1196" y="857" class="l">remaining risk</text>
 <text x="1196" y="878" class="l">policy.json gate</text>
@@ -151,7 +148,7 @@
 <path d="M840 842 L866 842" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <path d="M1150 842 L1176 842" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <rect x="30" y="980" width="1440" height="52" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-dasharray="6 4" stroke-width="2"/>
-<text x="50" y="1012" class="l"><tspan class="b">audit.jsonl</tspan> — append-only trail: every stage, every AI call (provider, model, outcome — never keys), the approval, every change</text>
+<text x="50" y="1012" class="l"><tspan class="b">audit.jsonl</tspan> — append-only trail: every stage, every agent call (provider, model, outcome — never keys), review decisions, the approval, every change</text>
 <rect x="1500" y="96" width="270" height="936" rx="16" fill="#f7fbf8" stroke="#1f7a3a" stroke-width="2"/>
 <text x="1518" y="124" class="t" fill="#1f7a3a">Public data (read-only)</text>
 <text x="1518" y="146" class="lg">cached in .cache/ → offline demo</text>
@@ -180,8 +177,8 @@
 <text x="1530" y="866" class="t2" fill="#1f7a3a">GitHub API</text>
 <text x="1530" y="891" class="l">action tag → commit SHA</text>
 <rect x="1516" y="930" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
-<text x="1530" y="962" class="t2" fill="#1f7a3a">AI providers</text>
-<text x="1530" y="987" class="l">Claude · Gemini · Groq</text>
+<text x="1530" y="962" class="t2" fill="#1f7a3a">Maven Central</text>
+<text x="1530" y="987" class="l">parent POMs · BOMs</text>
 <path d="M1500 230 L1474 230" fill="none" stroke="#1f7a3a" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
 <path d="M1500 540 L1474 540" fill="none" stroke="#1f7a3a" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
 <path d="M1500 842 L1474 842" fill="none" stroke="#1f7a3a" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>

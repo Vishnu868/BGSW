@@ -58,30 +58,30 @@ def build() -> str:
     # ---- band 1: Day 1 eyes
     band(96, 262, "DAY 1 · EYES", "python -m guardian scan <repo>  →  what is in the app, what changed, what is risky")
     box(50, 134, 200, 210, "data", "Any repository", ["local folder or git URL", "read-only clone", "", "missing npm lockfile?", "generated with", "--ignore-scripts", "(no package code runs)"], tag=False)
-    box(290, 134, 360, 210, "engine", "1 · DISCOVER", ["find manifests · lockfiles ·", "Dockerfiles · CI workflows", "adapters: npm lockfile v1–v3 ·", "Python · Maven · Go · CycloneDX", "deps.dev fills lockfile-less trees", "!→ dependency graph + paths"])
+    box(290, 134, 360, 210, "engine", "1 · DISCOVER", ["find manifests · lockfiles ·", "Dockerfiles · CI workflows", "adapters: npm lockfile v1–v3 ·", "Python · Maven · Go · Ruby · PHP", "deps.dev fills lockfile-less trees", "!→ dependency graph + paths"])
     box(690, 134, 420, 210, "engine", "2 · DETECT", ["osv.py        1.1/1.2 CVEs · CVSS · fixed version", "packages.py   1.3 typosquat · 1.4 install scripts", "lockfile.py   1.6 tamper · registry · diff", "container.py  1.5 digest pin · EOL · root", "cicd.py       1.7 unpinned actions · injection", "!every finding carries evidence"])
     box(1150, 134, 300, 210, "data", "Day 1 outputs", ["!guardian.html", "interactive dependency graph", "findings.json  (evidence)", "sbom.cdx.json  (CycloneDX 1.5,", "  next scan's baseline)", "report.md"], tag=False)
     arrow("M250 239 L286 239")
     arrow("M650 239 L686 239")
     arrow("M1110 239 L1146 239")
     # ---- band 2: brain
-    band(384, 286, "DAY 2 · BRAIN", "python -m guardian analyze <repo>  →  what matters most, and why")
-    box(50, 424, 360, 230, "engine", "3 · ANALYZE: context", ["reachability.py  imported? file:line", "intel.py  EPSS + CISA KEV", "prioritize.py  explainable score:", "  CVSS · exploitation · dev-only ·", "  reachability · directness", "!→ P1 · P2 · P3 · P4 risk items"])
-    box(450, 424, 460, 230, "agent", "AI INVESTIGATOR (one per top risk)", ["picks read-only tools one at a time (≤5 steps):", "item_details · dependency_paths · code_usage ·", "advisory · exploit_intel · registry_info ·", "registry_versions · baseline_change → E1..En", "!evidence checker: cite real evidence ids,", "!versions must exist, CVEs must be in evidence,", "!confidence < 0.6 → human review"])
-    box(950, 424, 250, 230, "engine", "LLM ROUTER", ["Claude  (Anthropic SDK)", "   ↓ on failure", "Gemini  (REST)", "   ↓", "Groq  (REST)", "   ↓", "!rule-based logic (no key)"], tag=False)
-    box(1240, 424, 210, 230, "data", "analysis.json", ["prioritised risks", "verdicts labelled", "AI or rules", "(inference, separate", "from evidence)", "executive summary"], tag=False)
-    arrow("M1300 344 L1300 372 L230 372 L230 420", "findings.json", 640, 366)
-    arrow("M410 539 L446 539")
-    arrow("M910 520 L946 520")
-    arrow("M950 556 L914 556")
-    arrow("M680 424 L680 415 L1345 415 L1345 420", "verdicts", 1000, 399)
+    band(384, 286, "DAY 2 · BRAIN", "python -m guardian analyze <repo>  →  5 agents + neurosymbolic verifier")
+    box(50, 424, 290, 230, "engine", "3 · SYMBOLIC PRIOR", ["reachability: imported?", "  (file:line)", "EPSS + CISA KEV", "explainable base score", "CVSS · dev-only · direct", "!→ P1–P4 prior"], tag=False)
+    box(370, 424, 540, 230, "agent", "FIVE AGENTS · shared case file", ["!1 Orchestrator & Triage (lead): routes cases, final priority", "!2 Vulnerability Analyst: is the CVE exploitable in this app?", "!3 Supply-Chain Forensics: fakes · scripts · tampering · CI", "!4 Remediation Planner: safest fix (in PLAN and VALIDATE)", "!5 Critic: independent second opinion → review queue", "read-only tools · ≤5 steps each · Claude → Gemini → Groq → rules"])
+    box(940, 424, 270, 230, "engine", "NEUROSYMBOLIC VERIFIER", ["facts: graph · OSV ·", "registry · deps.dev", "rules: allow-list · semver", "· version exists · ±20", "!no cited evidence → reject", "!conf < 0.6 → human review"], tag=False)
+    box(1240, 424, 210, 230, "data", "analysis.json", ["final priorities", "agent case files", "verifier notes", "human review queue", "guardian.html", "(agents tab)"], tag=False)
+    arrow("M1300 344 L1300 372 L195 372 L195 420", "findings.json", 640, 366)
+    arrow("M340 539 L366 539")
+    arrow("M910 520 L936 520")
+    arrow("M940 556 L914 556")
+    arrow("M640 424 L640 415 L1345 415 L1345 420", "verified verdicts", 980, 399)
     # ---- band 3: shield
     band(696, 266, "DAY 2 · SHIELD", "plan → approve → apply → validate → report   (nothing changes without a human yes)")
-    box(50, 736, 240, 212, "engine", "4 · PLAN", ["9 allow-listed actions:", "upgrade · override ·", "replace · pin digest/SHA", "· block · escalate", "+ compat · rollback", "!plan = SHA-256 hash"])
-    box(320, 736, 230, 212, "human", "5 · APPROVE", ["terminal or web page", "approval bound to", "the plan hash", "plan edited → void", "!no yes → no change"])
+    box(50, 736, 240, 212, "engine", "4 · PLAN", ["rule proposal →", "Planner agent →", "verifier → Critic", "9 allow-listed actions", "fix's own tree checked", "!plan = SHA-256 hash"])
+    box(320, 736, 230, 212, "human", "5 · APPROVE", ["review queue (optional)", "approval bound to", "the plan hash", "plan edited → void", "!no yes → no change"])
     box(580, 736, 260, 212, "engine", "6 · APPLY (sandbox)", ["copy + git branch", "edit package.json /", "FROM / uses: lines", "lockfiles --ignore-scripts", "kill switch: STOP file", "!→ remediation.patch"])
-    box(870, 736, 280, 212, "engine", "7 · VALIDATE", ["lockfile resolve", "(+ npm ci / tests)", "rescan with DISCOVER+DETECT", "before vs after, new risks?", "!verified · partial · failed"])
-    box(1180, 736, 270, 212, "data", "REPORT + POLICY", ["!guardian_report.html", "finding → evidence → AI →", "approval → result →", "remaining risk", "policy.json gate", "(exit 1 blocks CI)"], tag=False)
+    box(870, 736, 280, 212, "engine", "7 · VALIDATE", ["lockfile resolve", "(+ npm ci / tests)", "rescan, before vs after", "Planner agent: next fix", "!verified · partial · failed"])
+    box(1180, 736, 270, 212, "data", "REPORT + POLICY", ["!guardian_report.html", "evidence → agents →", "approval → result →", "remaining risk", "policy.json gate", "(exit 1 blocks CI)"], tag=False)
     arrow("M1345 654 L1345 684 L245 684 L245 732", "analysis.json", 640, 678)
     arrow("M290 842 L316 842")
     arrow("M550 842 L576 842")
@@ -89,7 +89,7 @@ def build() -> str:
     arrow("M1150 842 L1176 842")
     # ---- audit strip
     out.append('<rect x="30" y="980" width="1440" height="52" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-dasharray="6 4" stroke-width="2"/>')
-    out.append('<text x="50" y="1012" class="l"><tspan class="b">audit.jsonl</tspan> — append-only trail: every stage, every AI call (provider, model, outcome — never keys), the approval, every change</text>')
+    out.append('<text x="50" y="1012" class="l"><tspan class="b">audit.jsonl</tspan> — append-only trail: every stage, every agent call (provider, model, outcome — never keys), review decisions, the approval, every change</text>')
     # ---- external column
     s, f, _ = STYLE["ext"]
     out.append(f'<rect x="1500" y="96" width="270" height="936" rx="16" fill="#f7fbf8" stroke="{s}" stroke-width="2"/>')
@@ -99,7 +99,7 @@ def build() -> str:
            ("npm registry", "metadata · downloads · versions"), ("PyPI JSON", "published versions"),
            ("FIRST EPSS", "exploit probability"), ("CISA KEV", "exploited in the wild"),
            ("OCI registries", "image → sha256 digest"), ("GitHub API", "action tag → commit SHA"),
-           ("AI providers", "Claude · Gemini · Groq")]
+           ("Maven Central", "parent POMs · BOMs")]
     for i, (t, d) in enumerate(ext):
         y = 162 + i * 96
         out.append(f'<rect x="1516" y="{y}" width="238" height="80" rx="10" fill="{f}" stroke="{s}" stroke-width="1.5"/>')
