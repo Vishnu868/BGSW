@@ -34,17 +34,17 @@
 <text x="306" y="192" class="l">find manifests · lockfiles ·</text>
 <text x="306" y="213" class="l">Dockerfiles · CI workflows</text>
 <text x="306" y="234" class="l">adapters: npm lockfile v1–v3 ·</text>
-<text x="306" y="255" class="l">Python · Maven · Go · Ruby · PHP</text>
+<text x="306" y="255" class="l">Python · Maven · Go · Ruby · PHP · C#</text>
 <text x="306" y="276" class="l">deps.dev fills lockfile-less trees</text>
 <text x="306" y="297" class="l b">→ dependency graph + paths</text>
 <rect x="690" y="134" width="420" height="210" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
 <text x="706" y="164" class="t" fill="#1f4e9c">2 · DETECT</text>
 <text x="1096" y="162" class="tag" text-anchor="end" fill="#1f4e9c">deterministic engine</text>
 <text x="706" y="192" class="l">osv.py        1.1/1.2 CVEs · CVSS · fixed version</text>
-<text x="706" y="213" class="l">packages.py   1.3 typosquat · 1.4 install scripts</text>
-<text x="706" y="234" class="l">lockfile.py   1.6 tamper · registry · diff</text>
-<text x="706" y="255" class="l">container.py  1.5 digest pin · EOL · root</text>
-<text x="706" y="276" class="l">cicd.py       1.7 unpinned actions · injection</text>
+<text x="706" y="213" class="l">scanners.py   Trivy + Grype cross-check (N of M)</text>
+<text x="706" y="234" class="l">packages.py   1.3 typosquat · 1.4 install scripts</text>
+<text x="706" y="255" class="l">lockfile.py   1.6 tamper · registry · diff</text>
+<text x="706" y="276" class="l">container.py 1.5 images · cicd.py 1.7 actions</text>
 <text x="706" y="297" class="l b">every finding carries evidence</text>
 <rect x="1150" y="134" width="300" height="210" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
 <text x="1166" y="164" class="t" fill="#5b6876">Day 1 outputs</text>
@@ -53,30 +53,30 @@
 <text x="1166" y="234" class="l">findings.json  (evidence)</text>
 <text x="1166" y="255" class="l">sbom.cdx.json  (CycloneDX 1.5,</text>
 <text x="1166" y="276" class="l">  next scan&#x27;s baseline)</text>
-<text x="1166" y="297" class="l">report.md</text>
+<text x="1166" y="297" class="l">report.txt</text>
 <path d="M250 239 L286 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <path d="M650 239 L686 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <path d="M1110 239 L1146 239" fill="none" stroke="#3d4a5c" stroke-width="2.2" marker-end="url(#ah)"/>
 <rect x="30" y="384" width="1440" height="286" rx="16" fill="#fafbfd" stroke="#d5dbe3"/>
 <text x="50" y="408" class="bt">DAY 2 · BRAIN</text>
-<text x="290" y="408" class="bs">python -m guardian analyze &lt;repo&gt;  →  5 agents + neurosymbolic verifier</text>
+<text x="290" y="408" class="bs">python -m guardian analyze &lt;repo&gt;  →  what matters most</text>
 <rect x="50" y="424" width="290" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
 <text x="66" y="454" class="t" fill="#1f4e9c">3 · SYMBOLIC PRIOR</text>
 <text x="66" y="482" class="l">reachability: imported?</text>
-<text x="66" y="503" class="l">  (file:line)</text>
-<text x="66" y="524" class="l">EPSS + CISA KEV</text>
-<text x="66" y="545" class="l">explainable base score</text>
+<text x="66" y="503" class="l">EPSS + CISA KEV</text>
+<text x="66" y="524" class="l">business: SSVC rules</text>
+<text x="66" y="545" class="l">  (business_rules.json)</text>
 <text x="66" y="566" class="l">CVSS · dev-only · direct</text>
 <text x="66" y="587" class="l b">→ P1–P4 prior</text>
 <rect x="370" y="424" width="540" height="230" rx="12" fill="#f1eafa" stroke="#6b3fa0" stroke-width="2"/>
-<text x="386" y="454" class="t" fill="#6b3fa0">FIVE AGENTS · shared case file</text>
+<text x="386" y="454" class="t" fill="#6b3fa0">SIX AGENTS · shared case file</text>
 <text x="896" y="452" class="tag" text-anchor="end" fill="#6b3fa0">AI agent</text>
-<text x="386" y="482" class="l b">1 Orchestrator &amp; Triage (lead): routes cases, final priority</text>
-<text x="386" y="503" class="l b">2 Vulnerability Analyst: is the CVE exploitable in this app?</text>
-<text x="386" y="524" class="l b">3 Supply-Chain Forensics: fakes · scripts · tampering · CI</text>
-<text x="386" y="545" class="l b">4 Remediation Planner: safest fix (in PLAN and VALIDATE)</text>
-<text x="386" y="566" class="l b">5 Critic: independent second opinion → review queue</text>
-<text x="386" y="587" class="l">read-only tools · ≤5 steps each · Claude → Gemini → Groq → rules</text>
+<text x="386" y="482" class="l b">6 Business Context: internet-facing? sensitive data? (file:line)</text>
+<text x="386" y="503" class="l b">1 Orchestrator &amp; Triage (lead): routes cases, final priority</text>
+<text x="386" y="524" class="l b">2 Vulnerability Analyst: is the CVE exploitable in this app?</text>
+<text x="386" y="545" class="l b">3 Supply-Chain Forensics: fakes · scripts · tampering · CI</text>
+<text x="386" y="566" class="l b">4 Remediation Planner · 5 Critic (second opinion)</text>
+<text x="386" y="587" class="l">read-only tools · ≤5 steps · Claude → Gemini → Groq → rules</text>
 <rect x="940" y="424" width="270" height="230" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
 <text x="956" y="454" class="t" fill="#1f4e9c">NEUROSYMBOLIC VERIFIER</text>
 <text x="956" y="482" class="l">facts: graph · OSV ·</text>
@@ -113,10 +113,10 @@
 <text x="66" y="899" class="l b">plan = SHA-256 hash</text>
 <rect x="320" y="736" width="230" height="212" rx="12" fill="#fdf0e4" stroke="#c2580a" stroke-width="2"/>
 <text x="336" y="766" class="t" fill="#c2580a">5 · APPROVE</text>
-<text x="336" y="794" class="l">review queue (optional)</text>
-<text x="336" y="815" class="l">approval bound to</text>
-<text x="336" y="836" class="l">the plan hash</text>
-<text x="336" y="857" class="l">plan edited → void</text>
+<text x="336" y="794" class="l">business facts + review</text>
+<text x="336" y="815" class="l">queue (optional)</text>
+<text x="336" y="836" class="l">approval bound to</text>
+<text x="336" y="857" class="l">the plan hash</text>
 <text x="336" y="878" class="l b">no yes → no change</text>
 <rect x="580" y="736" width="260" height="212" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
 <text x="596" y="766" class="t" fill="#1f4e9c">6 · APPLY (sandbox)</text>
@@ -159,11 +159,11 @@
 <text x="1530" y="290" class="t2" fill="#1f7a3a">deps.dev</text>
 <text x="1530" y="315" class="l">resolve transitive deps</text>
 <rect x="1516" y="354" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
-<text x="1530" y="386" class="t2" fill="#1f7a3a">npm registry</text>
+<text x="1530" y="386" class="t2" fill="#1f7a3a">npm + PyPI registries</text>
 <text x="1530" y="411" class="l">metadata · downloads · versions</text>
 <rect x="1516" y="450" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
-<text x="1530" y="482" class="t2" fill="#1f7a3a">PyPI JSON</text>
-<text x="1530" y="507" class="l">published versions</text>
+<text x="1530" y="482" class="t2" fill="#1f7a3a">Trivy + Grype DBs</text>
+<text x="1530" y="507" class="l">independent vuln databases</text>
 <rect x="1516" y="546" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
 <text x="1530" y="578" class="t2" fill="#1f7a3a">FIRST EPSS</text>
 <text x="1530" y="603" class="l">exploit probability</text>

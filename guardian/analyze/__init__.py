@@ -3,7 +3,7 @@
   symbolic prior : reachability (imports), EPSS + CISA KEV, explainable base score -> P1..P4
   agents         : Orchestrator & Triage lead, Vulnerability Analyst, Supply-Chain Forensics, Critic
   verifier       : every agent answer checked against facts and rules (guardian/neurosymbolic)
-Input : runs/<repo>/findings.json      Output: analysis.json, analysis.md, guardian.html (with agent verdicts)
+Input : runs/<repo>/findings.json      Output: business_context.json, analysis.json, analysis.txt, guardian.html (with agent verdicts)
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .. import audit
 from ..agents import orchestrator
 from ..llm import Router
 from ..neurosymbolic.facts import Facts
-from . import intel, prioritize, reachability
+from . import business, intel, prioritize, reachability
 
 
 def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
@@ -30,8 +30,9 @@ def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
     cves = sorted({f["data"].get("cve") for f in doc["findings"] if f["data"].get("cve")})
     kev = intel.kev(offline)
     epss = intel.epss(cves, offline)
-    items = prioritize.build_items(doc, reach, kev, epss)
     facts = Facts(doc, offline, {"kev": kev, "epss": epss})
+    ctx = business_context(run_dir, doc, repo, facts, router, log)
+    items = prioritize.build_items(doc, reach, kev, epss, business=ctx)
 
     log(f"[analyze] multi-agent investigation of the top {top} risks (+ high supply-chain risks)")
     agents = orchestrator.run(items, facts, router, top=top, log=log)
@@ -54,15 +55,52 @@ def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
            "reachability_files": reach.get("_meta", {}).get("source_files", 0),
            "counts": {k: sum(i["priority"] == k for i in items) for k in ("P1", "P2", "P3", "P4")},
            "agents": agents["agents"], "routing": agents["routing"], "cases": agents["cases"],
-           "review_queue": agents["review_queue"], "items": items, "llm_calls": router.calls}
+           "review_queue": agents["review_queue"], "items": items, "llm_calls": router.calls,
+           "business_context": {"function": ctx.get("business_function"), "facts": len(ctx["facts"]),
+                                "agent_source": ctx.get("agent", {}).get("source")},
+           "business_facts": [{k: f[k] for k in ("project", "fact", "value", "evidence", "line", "source")}
+                              for f in business.active_facts(ctx)]}
     (run_dir / "analysis.json").write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
-    (run_dir / "analysis.md").write_text(markdown(out), encoding="utf-8")
+    (run_dir / "analysis.txt").write_text(markdown(out), encoding="utf-8")
     _refresh_graph_page(run_dir, out)
     audit.log(trail, "analyze_done", {"items": len(items), "cases": len(agents["cases"]), "counts": out["counts"],
                                       "review_queue": len(agents["review_queue"])})
     log(f"[analyze] {len(items)} risk items -> {out['counts']}; {len(agents['cases'])} agent cases; "
         f"{len(agents['review_queue'])} need human review")
     return out
+
+
+def business_context(run_dir: Path, doc: dict, repo: Path, facts, router, log) -> dict:
+    """Pattern rules + Business Context agent -> verified facts -> business_context.json (keeps human decisions)."""
+    from ..agents import roles
+    from ..agents.tools import Toolbox
+    files = doc["repository"].get("files", {})
+    projects = sorted({p for k, v in files.items() if k in ("npm", "maven", "go", "ruby", "php", "requirements",
+                                                            "poetry", "pipfile", "nuget") for p in v})
+    ctx = business.rule_facts(repo, projects)
+    log(f"[business] pattern rules: {len(ctx['facts'])} facts")
+    r = roles.BUSINESS.run(router, {"repository": repo.name, "projects": projects,
+                                    "facts_already_found": [{k: f[k] for k in ("fact", "value", "project", "evidence")}
+                                                            for f in ctx["facts"]][:40],
+                                    "readme_function": ctx.get("business_function")}, Toolbox(facts, {}),
+                           purpose="business context")
+    if isinstance(r["output"], dict):
+        kept, notes = business.verify_agent_facts(r["output"].get("facts"), repo)
+        have = {(f["fact"], str(f["value"]), f["project"]) for f in ctx["facts"]}
+        new = [f for f in kept if (f["fact"], str(f["value"]), f["project"]) not in have]
+        ctx["facts"] += new
+        if r["output"].get("business_function"):
+            ctx["agent_function"] = str(r["output"]["business_function"])[:300]
+        ctx["agent"] = {"source": "ai", "provider": r["provider"], "added": len(new), "verifier_notes": notes,
+                        "steps": r["steps"]}
+        log(f"[business] Business Context agent added {len(new)} verified facts ({len(notes)} dropped)")
+    else:
+        ctx["agent"] = {"source": "rules", "note": r["error"]}
+    old = run_dir / "business_context.json"
+    if old.exists():
+        ctx["human"] = json.loads(old.read_text(encoding="utf-8")).get("human", {})
+    old.write_text(json.dumps(ctx, indent=1), encoding="utf-8")
+    return ctx
 
 
 def _refresh_graph_page(run_dir: Path, analysis: dict) -> None:

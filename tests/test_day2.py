@@ -142,7 +142,7 @@ class VerifierTests(unittest.TestCase):
 
 
 class OrchestratorTests(unittest.TestCase):
-    def test_five_agent_flow_with_critic_disagreement(self):
+    def test_agent_flow_with_critic_disagreement(self):
         router = FakeRouter({
             "lead_router": [{"final": {"routes": {"R-001": ["vulnerability_analyst"], "R-002": ["supply_chain_forensics"]},
                                        "critic": ["R-001"]}}],
@@ -157,7 +157,7 @@ class OrchestratorTests(unittest.TestCase):
                        {"final": {"reviews": [{"id": "R-002", "agree": True}], "evidence_refs": ["E1"]}}]})
         items = [dict(ITEM), dict(TYPO)]
         res = orchestrator.run(items, FakeFacts(), router, top=2, workers=2, log=lambda *_: None)
-        self.assertEqual(len(res["agents"]), 5)
+        self.assertEqual(len(res["agents"]), 6)
         self.assertEqual(items[1]["priority"], "P1")                        # 70 -> 85 by the lead, with reason
         self.assertEqual([q["id"] for q in res["review_queue"]], ["R-001"])  # critic disagreed -> human review
         agents_used = {e["agent"] for c in res["cases"].values() for e in c["entries"]}

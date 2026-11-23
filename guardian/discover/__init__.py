@@ -54,6 +54,8 @@ def discover(repo: Path) -> Inventory:
             found.setdefault("ruby", []).append(p)
         elif n == "composer.lock":
             found.setdefault("php", []).append(p)
+        elif n in ("packages.lock.json", "packages.config") or n.endswith(".csproj"):
+            found.setdefault("nuget", []).append(p)
         elif n.endswith((".cdx.json", "bom.json")) or n == "sbom.json":
             found.setdefault("cyclonedx", []).append(p)
         elif n == "dockerfile" or n.startswith("dockerfile.") or n.endswith(".dockerfile") or n == "containerfile":
@@ -68,12 +70,14 @@ def discover(repo: Path) -> Inventory:
     adapters = [
         ("npm", npm.parse), ("poetry", python.parse_poetry), ("pipfile", python.parse_pipfile_lock),
         ("requirements", python.parse_requirements), ("maven", others.parse_pom), ("go", others.parse_gomod),
-        ("ruby", more.parse_gemfile_lock), ("php", more.parse_composer_lock),
+        ("ruby", more.parse_gemfile_lock), ("php", more.parse_composer_lock), ("nuget", more.parse_nuget),
         ("cyclonedx", others.parse_cyclonedx),
     ]
     for kind, fn in adapters:
         for path in sorted(found.get(kind, [])):
             if kind == "requirements" and path.parent in py_locked:
+                continue
+            if kind == "nuget" and path.name.lower() != "packages.lock.json" and (path.parent / "packages.lock.json").exists():
                 continue
             try:
                 facts = fn(path, repo, inv.graph)

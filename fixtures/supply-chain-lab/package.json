@@ -1,0 +1,12 @@
+{
+  "name": "supply-chain-lab",
+  "version": "1.0.0",
+  "description": "Test fixture with planted supply-chain risks",
+  "dependencies": {
+    "express": "4.17.1",
+    "lodash": "4.17.4",
+    "mkdirp": "0.5.1",
+    "crossenv": "6.1.1",
+    "telemetry-helper-demo": "1.0.3"
+  }
+}

@@ -90,7 +90,7 @@ tr.click{cursor:pointer}tr.click:hover{background:var(--chip)}
     <label><input type="checkbox" id="fdev" checked> include dev-only</label>
     <input type="search" id="fq" placeholder="Filter text">
   </div>
-  <div class="tablewrap"><table><thead><tr><th>Severity</th><th>Cat.</th><th>Finding</th><th>Component</th><th>Recommendation</th></tr></thead><tbody id="ftable"></tbody></table></div>
+  <div class="tablewrap"><table><thead><tr><th>Severity</th><th>Cat.</th><th>Finding</th><th>Component</th><th>Scanners</th><th>Recommendation</th></tr></thead><tbody id="ftable"></tbody></table></div>
 </section>
 
 <section class="tab" id="t-changes"><div id="changes"></div></section>
@@ -122,7 +122,8 @@ const tiles = [
   [libs.length, "components"], [libs.filter(n => n.direct).length, "direct"],
   [libs.filter(n => !n.direct).length, "transitive"], [D.edges.length, "dependency edges"],
   [sevCount("critical"), "critical findings"], [sevCount("high"), "high findings"],
-  [F.length, "total findings"], [D.meta.ecosystems.join(", "), "ecosystems"]];
+  [F.length, "total findings"], [D.meta.ecosystems.join(", "), "ecosystems"],
+  [((D.meta.scanners || {}).ran || ["osv"]).map(s => ({osv: "OSV", trivy: "Trivy", grype: "Grype"}[s] || s)).join(" · "), "vulnerability scanners"]];
 $("#tiles").innerHTML = tiles.map(([v, l]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
 
 document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
@@ -222,8 +223,9 @@ function renderFindings() {
     return `<tr class="click" data-c="${esc(f.component)}"><td><span class="sev ${f.severity}">${f.severity}</span></td><td>${esc(f.category)}</td>
       <td>${esc(f.title)}<div class="ev">${esc(f.evidence.slice(0, 3).map(e => e.detail).join(" · "))}</div></td>
       <td>${n ? `${esc(n.name)}@${esc(n.version)}<div class="ev">${n.direct ? "direct" : "transitive"}${n.dev ? ", dev-only" : ""}</div>` : '<span class="muted">repository</span>'}</td>
+      <td class="ev">${f.data.scanners ? `${f.data.scanners.length}/${(f.data.applicable_scanners || []).length}<div>${esc(f.data.scanners.join(", "))}</div>` : "rule"}</td>
       <td class="ev">${esc(f.recommendation)}</td></tr>`;
-  }).join("") || `<tr><td colspan="5" class="muted">No findings match.</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted">No findings match.</td></tr>`;
   document.querySelectorAll("#ftable tr.click").forEach(tr => tr.onclick = () => {
     const id = tr.dataset.c; if (!byId[id]) return;
     $('#nav button[data-t="graph"]').click(); if (!visibleSet().has(id)) { if (byId[id].dev) $("#dev").checked = true; }
@@ -277,14 +279,22 @@ function entryHtml(e) {
 function agentHtml(id) {
   if (!A || !A.by_key[id]) return "";
   const k = A.by_key[id], c = k.case;
+  const b = k.business;
   return `<p style="margin:12px 0 4px"><b>Agents' assessment</b> <span class="chip">${esc(k.priority)} · ${esc(k.score)} (base ${esc(k.base_score)})</span></p>
+    ${b ? `<div class="ev"><b>business (SSVC):</b> ${esc(b.decision)} (${b.points >= 0 ? "+" : ""}${esc(b.points)}) - ${esc(b.reason)}<div>exploitation ${esc(b.exploitation)} · exposure ${esc(b.exposure)} · automatable ${esc(b.automatable)} · human impact ${esc(b.human_impact)}</div></div>` : ""}
     ${k.ai ? `<div class="ev">${esc(k.ai.agent)}: <b>${esc(k.ai.verdict)}</b> (${esc(k.ai.source)}) - ${esc(k.ai.risk_summary)}</div>` : '<div class="ev">not investigated by agents (below the top-N)</div>'}
     ${c ? c.entries.map(entryHtml).join("") : ""}`;
 }
 function renderAgents() {
   if (!A) { $("#agents").innerHTML = '<p class="muted">Run <code>python -m guardian analyze &lt;repo&gt;</code> to add the verdicts of the five agents to this page.</p>'; return; }
+  const bf = A.business_facts || [], bfn = ((A.business || {}).function) || {};
   $("#agents").innerHTML = `<p>LLM: ${esc(A.llm)}</p><div class="cats">${A.agents.map(a => `<div class="cat"><b>${esc(a.id)}</b> · ${esc(a.name)}</div>`).join("")}</div>
     <p>${esc((A.summary || {}).summary || "")}</p>
+    <h3>Business context (agent 6 + rules, every fact cites file:line)</h3>
+    <p>${esc(bfn.value || "")} ${bfn.evidence ? `<span class="chip">${esc(bfn.evidence)}</span>` : ""}</p>
+    <div class="tablewrap"><table><thead><tr><th>Project</th><th>Fact</th><th>Evidence</th><th>Source</th></tr></thead><tbody>
+    ${bf.map(f => `<tr><td>${esc(f.project)}</td><td>${esc(f.fact)} = <b>${esc(String(f.value))}</b></td><td class="ev">${esc(f.evidence)}<div>${esc(f.line)}</div></td><td>${esc(f.source)}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">none</td></tr>'}
+    </tbody></table></div><h3>Risk cases</h3>
     <div class="tablewrap"><table><thead><tr><th>Case</th><th>Priority</th><th>Verdict</th><th>Agents (case file)</th></tr></thead><tbody>
     ${Object.values(A.by_key).filter(k => k.case).map(k => `<tr><td>${esc(k.id)}<div class="ev">${esc(k.headline)}</div></td>
       <td>${esc(k.priority)}<div class="ev">${esc(k.score)} (base ${esc(k.base_score)})</div></td>

@@ -39,10 +39,11 @@ def analysis_view(a: dict) -> dict:
         case = a["cases"].get(it["id"])
         by_key[it["key"]] = {"id": it["id"], "priority": it["priority"], "score": it["score"], "base_score": it["base_score"],
                              "headline": it["headline"], "reachability": it["reachability"]["status"],
-                             "ai": it.get("ai"), "triage_reason": it.get("triage_reason"),
+                             "ai": it.get("ai"), "triage_reason": it.get("triage_reason"), "business": it.get("business"),
                              "case": case}
     return {"llm": a["llm"], "counts": a["counts"], "agents": a["agents"], "summary": a["summary"],
-            "review_queue": a["review_queue"], "by_key": by_key}
+            "review_queue": a["review_queue"], "by_key": by_key, "business": a.get("business_context"),
+            "business_facts": a.get("business_facts", [])}
 
 
 def render(data: dict) -> str:

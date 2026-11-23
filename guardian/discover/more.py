@@ -1,4 +1,4 @@
-"""More ecosystems: Ruby (Gemfile.lock), PHP (composer.lock), and Maven parent/BOM version resolution."""
+"""More ecosystems: Ruby (Gemfile.lock), PHP (composer.lock), C#/.NET (NuGet), Maven parent/BOM resolution."""
 from __future__ import annotations
 
 import json
@@ -174,3 +174,52 @@ def effective(root, depth: int = 0) -> tuple[dict, dict]:
         elif v and "${" not in v:
             managed[f"{g}:{a}"] = v
     return props, managed
+
+
+# ---------------------------------------------------------------- C# / .NET --
+def parse_nuget(manifest: Path, repo: Path, graph: Graph) -> dict:
+    """packages.lock.json (exact, with edges) > *.csproj PackageReference > packages.config (direct only)."""
+    rel, root_id = _root(manifest, repo, graph, "NuGet")
+    name = manifest.name.lower()
+    if name == "packages.lock.json":
+        data = json.loads(manifest.read_text(encoding="utf-8-sig"))
+        ids, deps = {}, {}
+        for framework, pkgs in (data.get("dependencies") or {}).items():
+            for n, meta in pkgs.items():
+                ver = meta.get("resolved", "")
+                if not ver or meta.get("type") == "Project":
+                    continue
+                c = graph.add(Component(id=component_id("NuGet", n, ver), name=n, version=ver, ecosystem="NuGet",
+                                        manifests={rel}, integrity=meta.get("contentHash", "")), dev=False)
+                ids[n.lower()] = c.id
+                deps.setdefault(c.id, set()).update(k.lower() for k in (meta.get("dependencies") or {}))
+                if meta.get("type") == "Direct":
+                    c.direct = True
+                    graph.link(root_id, c.id)
+        for cid, ds in deps.items():
+            for d in ds:
+                if d in ids:
+                    graph.link(cid, ids[d])
+        return {"manifest": rel, "lockfile": rel}
+    root = parse_xml(manifest.read_text(encoding="utf-8-sig", errors="replace"))
+    if root is None:
+        return {"manifest": rel}
+    found = 0
+    for el in root.iter():
+        tag = el.tag.split("}")[-1]
+        if tag == "PackageReference":
+            n = el.get("Include") or el.get("Update")
+            v = el.get("Version") or next((c.text for c in el if c.tag.split("}")[-1] == "Version"), "")
+        elif tag == "package":
+            n, v = el.get("id"), el.get("version")
+        else:
+            continue
+        if not n or not v:
+            continue
+        v = v.strip("[]() ").split(",")[0].strip()
+        c = graph.add(Component(id=component_id("NuGet", n, v), name=n, version=v, ecosystem="NuGet", direct=True,
+                                manifests={rel}), dev=False)
+        graph.link(root_id, c.id)
+        found += 1
+    graph.notes.append(f"{rel}: NuGet {manifest.name} - {found} direct packages (no packages.lock.json, so no transitive edges)")
+    return {"manifest": rel}

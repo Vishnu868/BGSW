@@ -221,7 +221,7 @@ def build(run_dir: Path, analysis: dict, max_actions: int = 8, include: tuple = 
             "plan_hash": h, "actions": actions, "covered_by_other_actions": covered,
             "allowed_action_types": ALLOWED, "status": "awaiting_approval"}
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=1), encoding="utf-8")
-    (run_dir / "plan.md").write_text(markdown(plan), encoding="utf-8")
+    (run_dir / "plan.txt").write_text(markdown(plan), encoding="utf-8")
     log(f"[plan] {len(actions)} actions, plan hash {h[:12]}")
     return plan
 

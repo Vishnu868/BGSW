@@ -53,8 +53,11 @@ def ensure_npm_locks(repo: Path, log) -> list[str]:
 
 
 def run(target: str, out_root: Path, offline: bool = False, baseline: Path | None = None,
-        gen_locks: bool = True, log=print) -> Path:
+        gen_locks: bool = True, scanners: str = "auto", images: bool = False, log=print) -> Path:
+    """scanners: "auto" (OSV + every installed external scanner), "osv", or e.g. "osv,trivy,grype".
+    images: also let Trivy scan the container base images named in Dockerfiles (downloads image layers)."""
     from .detect import cicd, container, lockfile, osv, packages
+    from .detect import scanners as ext
     repo = fetch(target, ROOT / "targets")
     import os
     os.environ["GUARDIAN_OFFLINE"] = "1" if offline else "0"
@@ -79,6 +82,15 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
         f"{len(inv.dockerfiles)} Dockerfiles, {len(inv.workflows)} workflows")
     log("[2/4] Detect    vulnerabilities (OSV.dev)")
     findings, osv_status = osv.scan(g, offline=offline)
+    log(f"      OSV: {osv_status['vulnerable_components']} vulnerable components, {osv_status['advisories']} advisories")
+    wanted = [t for t in ("trivy", "grype") if (scanners == "auto" and ext.binary(t)) or t in scanners.split(",")]
+    scanner_status = {"osv": "ok", "ran": ["osv"]}
+    if wanted:
+        log(f"      cross-check with {' + '.join(ext.NAMES[t] for t in wanted)} (independent scanners)")
+        imgs = sorted({c.name for c in g.nodes.values() if c.kind == "container"}) if images else []
+        extra, scanner_status = ext.scan(g, repo, findings, repo_id, out / "scanners", offline=offline,
+                                         use=tuple(wanted), images=imgs, log=log)
+        findings += extra
     log("      supply-chain checks: packages, lockfiles, containers, CI/CD")
     findings += packages.scan(g, inv, offline=offline)
     findings += lockfile.scan(g, inv)
@@ -97,6 +109,7 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
     log("[4/4] Report")
     meta = {"repo": repo.name, "path": str(repo), "scanned_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "osv_source": osv_status["source"], "osv": osv_status, "categories": CATEGORIES,
+            "scanners": scanner_status,
             "ecosystems": sorted({c.ecosystem for c in g.nodes.values() if c.kind == "library"}),
             "files": {**inv.files_seen, "dockerfiles": [p.relative_to(repo).as_posix() for p in inv.dockerfiles],
                       "compose": [p.relative_to(repo).as_posix() for p in inv.compose_files],
@@ -105,10 +118,10 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
     (out / "sbom.cdx.json").write_text(json.dumps(sbom_out.cyclonedx(g, findings, meta), indent=1), encoding="utf-8")
     report = text_report.findings_json(g, findings, meta, changes)
     (out / "findings.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
-    (out / "report.md").write_text(text_report.markdown(report), encoding="utf-8")
+    (out / "report.txt").write_text(text_report.markdown(report), encoding="utf-8")
     page_data = html_report.build_data(g, findings, meta, changes)
     (out / "graph_data.json").write_text(json.dumps(page_data, default=str), encoding="utf-8")
     (out / "guardian.html").write_text(html_report.render(page_data), encoding="utf-8")
     log(text_report.console_summary(report))
-    log(f"Outputs: {out}  (guardian.html, findings.json, report.md, sbom.cdx.json)")
+    log(f"Outputs: {out}  (guardian.html, findings.json, report.txt, sbom.cdx.json)")
     return out

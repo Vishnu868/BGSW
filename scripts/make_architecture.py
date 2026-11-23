@@ -58,16 +58,16 @@ def build() -> str:
     # ---- band 1: Day 1 eyes
     band(96, 262, "DAY 1 · EYES", "python -m guardian scan <repo>  →  what is in the app, what changed, what is risky")
     box(50, 134, 200, 210, "data", "Any repository", ["local folder or git URL", "read-only clone", "", "missing npm lockfile?", "generated with", "--ignore-scripts", "(no package code runs)"], tag=False)
-    box(290, 134, 360, 210, "engine", "1 · DISCOVER", ["find manifests · lockfiles ·", "Dockerfiles · CI workflows", "adapters: npm lockfile v1–v3 ·", "Python · Maven · Go · Ruby · PHP", "deps.dev fills lockfile-less trees", "!→ dependency graph + paths"])
-    box(690, 134, 420, 210, "engine", "2 · DETECT", ["osv.py        1.1/1.2 CVEs · CVSS · fixed version", "packages.py   1.3 typosquat · 1.4 install scripts", "lockfile.py   1.6 tamper · registry · diff", "container.py  1.5 digest pin · EOL · root", "cicd.py       1.7 unpinned actions · injection", "!every finding carries evidence"])
-    box(1150, 134, 300, 210, "data", "Day 1 outputs", ["!guardian.html", "interactive dependency graph", "findings.json  (evidence)", "sbom.cdx.json  (CycloneDX 1.5,", "  next scan's baseline)", "report.md"], tag=False)
+    box(290, 134, 360, 210, "engine", "1 · DISCOVER", ["find manifests · lockfiles ·", "Dockerfiles · CI workflows", "adapters: npm lockfile v1–v3 ·", "Python · Maven · Go · Ruby · PHP · C#", "deps.dev fills lockfile-less trees", "!→ dependency graph + paths"])
+    box(690, 134, 420, 210, "engine", "2 · DETECT", ["osv.py        1.1/1.2 CVEs · CVSS · fixed version", "scanners.py   Trivy + Grype cross-check (N of M)", "packages.py   1.3 typosquat · 1.4 install scripts", "lockfile.py   1.6 tamper · registry · diff", "container.py 1.5 images · cicd.py 1.7 actions", "!every finding carries evidence"])
+    box(1150, 134, 300, 210, "data", "Day 1 outputs", ["!guardian.html", "interactive dependency graph", "findings.json  (evidence)", "sbom.cdx.json  (CycloneDX 1.5,", "  next scan's baseline)", "report.txt"], tag=False)
     arrow("M250 239 L286 239")
     arrow("M650 239 L686 239")
     arrow("M1110 239 L1146 239")
     # ---- band 2: brain
-    band(384, 286, "DAY 2 · BRAIN", "python -m guardian analyze <repo>  →  5 agents + neurosymbolic verifier")
-    box(50, 424, 290, 230, "engine", "3 · SYMBOLIC PRIOR", ["reachability: imported?", "  (file:line)", "EPSS + CISA KEV", "explainable base score", "CVSS · dev-only · direct", "!→ P1–P4 prior"], tag=False)
-    box(370, 424, 540, 230, "agent", "FIVE AGENTS · shared case file", ["!1 Orchestrator & Triage (lead): routes cases, final priority", "!2 Vulnerability Analyst: is the CVE exploitable in this app?", "!3 Supply-Chain Forensics: fakes · scripts · tampering · CI", "!4 Remediation Planner: safest fix (in PLAN and VALIDATE)", "!5 Critic: independent second opinion → review queue", "read-only tools · ≤5 steps each · Claude → Gemini → Groq → rules"])
+    band(384, 286, "DAY 2 · BRAIN", "python -m guardian analyze <repo>  →  what matters most")
+    box(50, 424, 290, 230, "engine", "3 · SYMBOLIC PRIOR", ["reachability: imported?", "EPSS + CISA KEV", "business: SSVC rules", "  (business_rules.json)", "CVSS · dev-only · direct", "!→ P1–P4 prior"], tag=False)
+    box(370, 424, 540, 230, "agent", "SIX AGENTS · shared case file", ["!6 Business Context: internet-facing? sensitive data? (file:line)", "!1 Orchestrator & Triage (lead): routes cases, final priority", "!2 Vulnerability Analyst: is the CVE exploitable in this app?", "!3 Supply-Chain Forensics: fakes · scripts · tampering · CI", "!4 Remediation Planner · 5 Critic (second opinion)", "read-only tools · ≤5 steps · Claude → Gemini → Groq → rules"])
     box(940, 424, 270, 230, "engine", "NEUROSYMBOLIC VERIFIER", ["facts: graph · OSV ·", "registry · deps.dev", "rules: allow-list · semver", "· version exists · ±20", "!no cited evidence → reject", "!conf < 0.6 → human review"], tag=False)
     box(1240, 424, 210, 230, "data", "analysis.json", ["final priorities", "agent case files", "verifier notes", "human review queue", "guardian.html", "(agents tab)"], tag=False)
     arrow("M1300 344 L1300 372 L195 372 L195 420", "findings.json", 640, 366)
@@ -78,7 +78,7 @@ def build() -> str:
     # ---- band 3: shield
     band(696, 266, "DAY 2 · SHIELD", "plan → approve → apply → validate → report   (nothing changes without a human yes)")
     box(50, 736, 240, 212, "engine", "4 · PLAN", ["rule proposal →", "Planner agent →", "verifier → Critic", "9 allow-listed actions", "fix's own tree checked", "!plan = SHA-256 hash"])
-    box(320, 736, 230, 212, "human", "5 · APPROVE", ["review queue (optional)", "approval bound to", "the plan hash", "plan edited → void", "!no yes → no change"])
+    box(320, 736, 230, 212, "human", "5 · APPROVE", ["business facts + review", "queue (optional)", "approval bound to", "the plan hash", "!no yes → no change"])
     box(580, 736, 260, 212, "engine", "6 · APPLY (sandbox)", ["copy + git branch", "edit package.json /", "FROM / uses: lines", "lockfiles --ignore-scripts", "kill switch: STOP file", "!→ remediation.patch"])
     box(870, 736, 280, 212, "engine", "7 · VALIDATE", ["lockfile resolve", "(+ npm ci / tests)", "rescan, before vs after", "Planner agent: next fix", "!verified · partial · failed"])
     box(1180, 736, 270, 212, "data", "REPORT + POLICY", ["!guardian_report.html", "evidence → agents →", "approval → result →", "remaining risk", "policy.json gate", "(exit 1 blocks CI)"], tag=False)
@@ -96,7 +96,7 @@ def build() -> str:
     out.append(f'<text x="1518" y="124" class="t" fill="{s}">Public data (read-only)</text>')
     out.append('<text x="1518" y="146" class="lg">cached in .cache/ → offline demo</text>')
     ext = [("OSV.dev", "CVEs for every ecosystem"), ("deps.dev", "resolve transitive deps"),
-           ("npm registry", "metadata · downloads · versions"), ("PyPI JSON", "published versions"),
+           ("npm + PyPI registries", "metadata · downloads · versions"), ("Trivy + Grype DBs", "independent vuln databases"),
            ("FIRST EPSS", "exploit probability"), ("CISA KEV", "exploited in the wild"),
            ("OCI registries", "image → sha256 digest"), ("GitHub API", "action tag → commit SHA"),
            ("Maven Central", "parent POMs · BOMs")]

@@ -114,4 +114,4 @@ def run(items: list[dict], facts, router, top: int = 6, workers: int = 2, log=pr
                                    "verdict": c["ai"]["verdict"] if c["ai"] else None,
                                    "needs_review": any(q["id"] == c["id"] for q in review_queue)}
     return {"cases": board, "review_queue": review_queue, "summary": tri.get("summary"),
-            "routing": routing, "agents": [{"id": i, "name": n, "roles": r} for i, n, r in roles.FIVE]}
+            "routing": routing, "agents": [{"id": i, "name": n, "roles": r} for i, n, r in roles.AGENTS]}

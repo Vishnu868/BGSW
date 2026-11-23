@@ -1,4 +1,4 @@
-"""Machine-readable findings.json + human-readable report.md + console summary."""
+"""Machine-readable findings.json + human-readable report.txt + console summary."""
 from __future__ import annotations
 
 from collections import Counter

@@ -2,6 +2,7 @@
 
     python scripts/setup.py            # node + targets
     python scripts/setup.py --no-node  # only clone targets (if npm is already installed)
+    python scripts/setup.py --scanners # also download Trivy + Grype (official GitHub releases, checksum-verified)
 
 Node.js is only used to generate missing npm lockfiles with --ignore-scripts (no package code runs).
 """
@@ -52,6 +53,28 @@ def get_node() -> None:
     print(f"node {ver} installed in {dest} (checksum OK)")
 
 
+def get_scanners() -> None:
+    """Latest Trivy (aquasecurity/trivy) and Grype (anchore/grype) Windows builds into tools/, checksum-verified."""
+    for repo, tool, marker in (("aquasecurity/trivy", "trivy", "windows-64bit.zip"),
+                               ("anchore/grype", "grype", "windows_amd64.zip")):
+        dest = ROOT / "tools" / tool
+        if dest.exists():
+            print(f"{tool} already present")
+            continue
+        rel = json.load(urllib.request.urlopen(f"https://api.github.com/repos/{repo}/releases/latest"))
+        asset = next(a for a in rel["assets"] if a["name"].endswith(marker))
+        sums = next(a for a in rel["assets"] if a["name"].endswith("checksums.txt"))
+        expected = next(l.split()[0] for l in urllib.request.urlopen(sums["browser_download_url"]).read().decode().splitlines()
+                        if l.endswith(" " + asset["name"]))
+        print(f"downloading {asset['name']} ...")
+        data = urllib.request.urlopen(asset["browser_download_url"]).read()
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise SystemExit(f"{tool}: checksum mismatch - aborting")
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            z.extractall(dest)
+        print(f"{tool} {rel['tag_name']} installed in {dest} (checksum OK)")
+
+
 def get_targets() -> None:
     (ROOT / "targets").mkdir(exist_ok=True)
     for name, url in TARGETS.items():
@@ -65,5 +88,7 @@ def get_targets() -> None:
 if __name__ == "__main__":
     if "--no-node" not in sys.argv:
         get_node()
+    if "--scanners" in sys.argv:
+        get_scanners()
     get_targets()
     print("done - next: python -m guardian scan targets/juice-shop")

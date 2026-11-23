@@ -37,6 +37,8 @@ class Agent:
     def run(self, router, case: dict, toolbox, purpose: str) -> dict:
         """-> {"agent", "output" (raw final or None), "steps", "evidence", "provider", "error"}"""
         result = {"agent": self.name, "output": None, "steps": [], "evidence": {}, "provider": "rules", "error": ""}
+        if hasattr(router, "for_agent"):
+            router = router.for_agent(self.name.split("_")[0] if self.name.startswith("lead") else self.name)
         if not router.enabled:
             result["error"] = "no LLM configured"
             return result

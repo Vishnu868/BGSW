@@ -1,0 +1,9 @@
+{
+  "version": "0.5",
+  "requires": [
+    "zlib/1.2.11#ffa77daf83a57094149707928bdce823%1667396813.733",
+    "openssl/1.1.1k#e1bec4d8bb3c5a4bc0e7d2e5b8f6f8c1%1667396813.733"
+  ],
+  "build_requires": [],
+  "python_requires": []
+}

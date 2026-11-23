@@ -34,3 +34,29 @@ def run(run_dir: Path, ask=input, log=print) -> dict:
     f.write_text(json.dumps(decisions, indent=1), encoding="utf-8")
     log(f"[review] {len(decisions)} decision(s) recorded")
     return decisions
+
+
+def business(run_dir: Path, ask=input, log=print) -> dict:
+    """Show the business facts (rules + Business Context agent) and let a human confirm or reject each one.
+    Rejected facts are ignored by the business-impact rules on the next `analyze`."""
+    f = run_dir / "business_context.json"
+    if not f.exists():
+        log("[business] run `python -m guardian analyze <repo>` first")
+        return {}
+    ctx = json.loads(f.read_text(encoding="utf-8"))
+    human = ctx.setdefault("human", {})
+    fn = ctx.get("business_function") or {}
+    log(f"Business function: {fn.get('value', '-')}  ({fn.get('evidence', '')})")
+    if ctx.get("agent_function"):
+        log(f"Agent's summary  : {ctx['agent_function']}")
+    for fact in ctx.get("facts", []):
+        key = f"{fact['fact']}:{fact['value']}:{fact['project']}"
+        log(f"\n[{human.get(key, 'unreviewed')}] {fact['project']}: {fact['fact']} = {fact['value']}   ({fact['source']})")
+        log(f"   evidence {fact['evidence']}: {fact['line']}")
+        ans = ask("   [c]onfirm / [r]eject / [s]kip: ").strip().lower()[:1]
+        if ans in ("c", "r"):
+            human[key] = "confirmed" if ans == "c" else "rejected"
+            audit.log(run_dir / "audit.jsonl", "business_fact_review", {"fact": key, "decision": human[key]})
+    f.write_text(json.dumps(ctx, indent=1), encoding="utf-8")
+    log("\n[business] saved. Re-run `python -m guardian analyze <repo>` to apply the decisions.")
+    return ctx

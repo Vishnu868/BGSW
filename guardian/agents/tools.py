@@ -14,6 +14,9 @@ DOCS = {
     "file_lines": "(file, line)  - lines of a repository file (Dockerfile, workflow, manifest)",
     "dependency_tree": "(package, version)  - resolved dependency tree of a published version (deps.dev)",
     "safe_upgrade": "(package)  - smallest-impact version >= fixed whose own dependency tree has no known CVE",
+    "list_files": "(contains)  - repository files whose path contains the text (max 60), e.g. 'route', 'model'",
+    "search_repo": "(text)  - lines in the repository containing the text (max 20 hits, file:line + line)",
+    "read_lines": "(file, line)  - a few lines around file:line",
 }
 
 
@@ -95,6 +98,31 @@ class Toolbox:
         t = self.f.tree(package or self.name, version or self.version, self.eco)
         return {"error": "tree unavailable"} if t is None else {"package": package or self.name, "version": version or self.version,
                                                                 "dependencies": [f"{n['name']}@{n['version']}" for n in t][:60]}
+
+    def t_list_files(self, contains: str = ""):
+        from ..analyze.business import _files
+        hits = [p.relative_to(self.f.repo).as_posix() for p in _files(self.f.repo)
+                if contains.lower() in p.relative_to(self.f.repo).as_posix().lower()]
+        return {"contains": contains, "files": hits[:60], "total": len(hits)}
+
+    def t_search_repo(self, text: str = ""):
+        from ..analyze.business import _files
+        if len(text) < 3:
+            return {"error": "search text must have at least 3 characters"}
+        hits = []
+        for p in _files(self.f.repo):
+            try:
+                for i, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines()[:4000], 1):
+                    if text.lower() in line.lower() and len(line) < 400:
+                        hits.append(f"{p.relative_to(self.f.repo).as_posix()}:{i}: {line.strip()[:140]}")
+                        if len(hits) >= 20:
+                            return {"text": text, "hits": hits, "truncated": True}
+            except OSError:
+                continue
+        return {"text": text, "hits": hits}
+
+    def t_read_lines(self, file: str = "", line: int = 1):
+        return self.f.file_lines(file, int(line or 1), context=4)
 
     def t_safe_upgrade(self, package: str = ""):
         return self.f.safe_upgrade(package or self.name, self.item.get("max_fixed") or "", self.eco, self.version)

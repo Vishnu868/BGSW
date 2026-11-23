@@ -3,6 +3,7 @@
 Day 1 (Eyes)            scan      <folder|git-url>   discover components, dependency graph, detect risks
 Day 2 (Brain & Shield)  analyze   <repo>             5 agents + symbolic verifier: investigate, triage, critic
                         review    <repo>             human review queue (agents unsure or in disagreement)
+                        business  <repo>             show / confirm the business facts (internet-facing, data)
                         plan      <repo>             safe remediation plan (allow-listed actions only)
                         approve   <repo> [--web]     human approval bound to the plan hash
                         apply     <repo>             apply approved actions in a sandbox branch (+ patch)
@@ -43,12 +44,16 @@ def main(argv=None) -> int:
     s.add_argument("--offline", action="store_true", help="use cached vulnerability/registry data only")
     s.add_argument("--baseline", help="earlier sbom.cdx.json to compare against (default: previous scan)")
     s.add_argument("--no-lockgen", action="store_true", help="do not generate missing npm lockfiles")
+    s.add_argument("--scanners", default="auto", help='auto (OSV + installed Trivy/Grype), "osv", or "osv,trivy,grype"')
+    s.add_argument("--images", action="store_true", help="also scan Docker base images with Trivy (downloads layers)")
     a = sub.add_parser("analyze")
     a.add_argument("repo")
     a.add_argument("--top", type=int, default=6, help="how many top risks the agents investigate (default 6)")
     a.add_argument("--offline", action="store_true")
     rv = sub.add_parser("review")
     rv.add_argument("repo")
+    bz = sub.add_parser("business")
+    bz.add_argument("repo")
     p = sub.add_parser("plan")
     p.add_argument("repo")
     p.add_argument("--max", type=int, default=8)
@@ -80,19 +85,23 @@ def main(argv=None) -> int:
 
     if args.cmd == "scan":
         scan_run(args.target, Path(args.out), offline=args.offline,
-                 baseline=Path(args.baseline) if args.baseline else None, gen_locks=not args.no_lockgen)
+                 baseline=Path(args.baseline) if args.baseline else None, gen_locks=not args.no_lockgen,
+                 scanners=args.scanners, images=args.images)
     elif args.cmd == "analyze":
         from . import analyze
         analyze.run(_dir(args.repo), top=args.top, offline=args.offline)
     elif args.cmd == "review":
         from . import review
         review.run(_dir(args.repo))
+    elif args.cmd == "business":
+        from . import review
+        review.business(_dir(args.repo))
     elif args.cmd == "plan":
         from .remediate import planner
         d = _dir(args.repo)
         planner.build(d, json.loads((d / "analysis.json").read_text(encoding="utf-8")), max_actions=args.max,
                       include=tuple(args.include.split(",")), offline=args.offline)
-        print((d / "plan.md").read_text(encoding="utf-8"))
+        print((d / "plan.txt").read_text(encoding="utf-8"))
     elif args.cmd == "approve":
         from .remediate import approval
         d = _dir(args.repo)

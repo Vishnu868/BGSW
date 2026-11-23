@@ -22,7 +22,11 @@ def band(score: float) -> tuple[str, str]:
     return "P4", "accept / monitor"
 
 
-def build_items(doc: dict, reach: dict, kev: set, epss: dict) -> list[dict]:
+def build_items(doc: dict, reach: dict, kev: set, epss: dict, business: dict | None = None) -> list[dict]:
+    """business: business_context (see business.py); adds an SSVC-inspired business factor to every item."""
+    import re
+    from . import business as biz
+    rules = biz.load_rules() if business else None
     groups: dict[str, list] = {}
     for f in doc["findings"]:
         key = f["component"] or f"{f['rule']}:{f['id']}"
@@ -62,6 +66,13 @@ def build_items(doc: dict, reach: dict, kev: set, epss: dict) -> list[dict]:
                     "via-unused-parent": [("only reachable through unused dependencies", -15)]}.get(st, [])
         if cd.get("direct"):
             factors.append(("direct dependency", 5))
+        vec = next((m.group(0) for ev in best["evidence"] for m in [re.search(r"CVSS:3\.\d/[A-Z:/]+", ev.get("detail", ""))] if m), "")
+        bdec = None
+        if business:
+            bdec = biz.decide({"component": cd, "cve": best["data"].get("cve", ""), "reachability": r,
+                               "cvss_vector": vec}, business, kev, epss, rules)
+            if bdec["points"]:
+                factors.append((f"business: SSVC {bdec['decision']} - {bdec['reason']}", bdec["points"]))
         score = max(0.0, min(100.0, sum(v for _, v in factors)))
         p, label = band(score)
         exact = bool(cd) and "*" not in str(cd.get("version", "")) and "?" not in str(cd.get("version", ""))
@@ -78,6 +89,7 @@ def build_items(doc: dict, reach: dict, kev: set, epss: dict) -> list[dict]:
             "max_fixed": max((f["data"].get("fixed", "") for f in fs if f["data"].get("fixed")), default="",
                              key=lambda v: tuple(int(x) for x in v.split(".") if x.isdigit()) or (0,)),
             "recommendation": best["recommendation"], "rule": best["rule"],
+            "cve": best["data"].get("cve", ""), "cvss_vector": vec, "business": bdec,
         })
     items.sort(key=lambda i: (-i["score"], i["headline"]))
     for n, it in enumerate(items, 1):

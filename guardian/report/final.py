@@ -1,6 +1,6 @@
 """Final Guardian report: original finding + evidence -> AI analysis (labelled inference) -> approved action
 -> build/test -> before/after -> remaining/accepted risk -> confidence -> audit trail.
-Writes runs/<repo>/guardian_report.json, .md and .html."""
+Writes runs/<repo>/guardian_report.json, .txt and .html."""
 from __future__ import annotations
 
 import html
@@ -48,6 +48,9 @@ def build(run_dir: Path, log=print) -> dict:
             "ai_checker_notes": [n for e in (cases.get(a["risk_item"]) or {}).get("entries", []) for n in (e.get("verifier_notes") or []) if n],
             "planner_agent": a.get("planner"), "critic": a.get("critic"),
             "human_review": review.get(a["risk_item"]),
+            "business": item.get("business"),
+            "scanners": (f0 or {}).get("data", {}).get("scanners"),
+            "applicable_scanners": (f0 or {}).get("data", {}).get("applicable_scanners"),
             "recommended_action": {"type": a["type"], "params": a["params"], "rationale": a["rationale"],
                                    "compatibility": a["compatibility"], "rollback": a["rollback"]},
             "approval": ("approved" if a["id"] in approval.get("approved_actions", []) else
@@ -72,7 +75,7 @@ def build(run_dir: Path, log=print) -> dict:
            "accepted_risk": accepted, "final_confidence": conf,
            "audit_trail": audit.read(run_dir / "audit.jsonl")}
     (run_dir / "guardian_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
-    (run_dir / "guardian_report.md").write_text(markdown(rep), encoding="utf-8")
+    (run_dir / "guardian_report.txt").write_text(markdown(rep), encoding="utf-8")
     (run_dir / "guardian_report.html").write_text(page(rep), encoding="utf-8")
     log(f"[report] {run_dir / 'guardian_report.html'}")
     return rep
@@ -97,6 +100,13 @@ def markdown(r: dict) -> str:
         if s.get("ai_inference"):
             L.append(f"- {'AI inference' if s['ai_inference'].get('source') == 'ai' else 'Rule-based analysis'} ({s['ai_inference'].get('source')}, confidence {s['ai_inference'].get('confidence')}): "
                      f"{s['ai_inference'].get('risk_summary')}")
+        if s.get("business"):
+            b = s["business"]
+            L.append(f"- Business (SSVC): {b['decision']} ({b['points']:+d}) - {b['reason']}; exposure {b['exposure']}, "
+                     f"human impact {b['human_impact']}, exploitation {b['exploitation']}")
+        if s.get("scanners"):
+            L.append(f"- Scanners: confirmed by {len(s['scanners'])} of {len(s.get('applicable_scanners') or [])} "
+                     f"({', '.join(s['scanners'])})")
         for ag in s.get("agents") or []:
             L.append(f"- Agent {ag['agent']} ({ag['source']}, {ag['status']}): {ag['verdict']} {ag['summary'][:160]}")
         if s.get("critic"):
@@ -131,6 +141,8 @@ def page(r: dict) -> str:
 <b>{e(s['action'])} · {e(ra['type'])}</b> <span class="st {e(st.split()[0])}">{e(st)}</span></div>
 <div class=t>{e(s['risk'])}</div>
 <div class=row><div><h4>1 · Verified evidence</h4>{''.join(f'<div class=ev><b>{e(x["source"].split("/")[-1] if x["source"].startswith("http") else x["source"])}</b>: {e(x["detail"])}</div>' for x in of.get('evidence', [])[:4])}
+{f"<div class=ev><b>scanners</b>: {len(s['scanners'])} of {len(s.get('applicable_scanners') or [])} ({e(', '.join(s['scanners']))})</div>" if s.get('scanners') else ''}
+{f"<div class=ev><b>business (SSVC)</b>: {e(s['business']['decision'])} - {e(s['business']['reason'])}</div>" if s.get('business') else ''}
 <div class=ev><b>path</b>: {e(' → '.join(of.get('dependency_path') or []))}</div></div>
 <div><h4>2 · {'AI analysis <span class=m>(inference, checked)</span>' if ai and ai.get('source') == 'ai' else 'Analysis <span class=m>(rule-based, no AI)</span>'}</h4>{f"<div class=ev>{e(str(ai.get('risk_summary')))}</div><div class=ev>verdict <b>{e(str(ai.get('verdict')))}</b> · confidence {e(str(ai.get('confidence')))} · source {e(str(ai.get('source')))}</div>" if ai else '<div class=m>not investigated</div>'}
 {''.join(f'<div class=ev><b>{e(ag["agent"])}</b> ({e(ag["source"])}, {e(ag["status"])}): {e(str(ag["verdict"]))} {e(str(ag["summary"])[:140])}</div>' for ag in (s.get('agents') or []))}

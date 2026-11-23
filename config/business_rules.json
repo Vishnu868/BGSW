@@ -1,0 +1,18 @@
+{
+  "description": "SSVC-inspired business decision (CISA / CMU-SEI Stakeholder-Specific Vulnerability Categorization). First matching row wins. Points are added to the symbolic risk score.",
+  "epss_poc_threshold": 0.1,
+  "points": {"Act": 15, "Attend": 8, "Track*": 3, "Track": 0},
+  "decision_table": [
+    {"when": {"exploitation": "active", "exposure": ["open", "controlled"]}, "decision": "Act",
+     "why": "exploited in the wild and reachable in production"},
+    {"when": {"exploitation": "active"}, "decision": "Attend", "why": "exploited in the wild"},
+    {"when": {"exploitation": "poc", "exposure": "open", "human_impact": ["high", "very_high"]}, "decision": "Act",
+     "why": "likely exploitation of an internet-facing service that handles sensitive data"},
+    {"when": {"exposure": "open", "automatable": "yes", "human_impact": ["high", "very_high"]}, "decision": "Attend",
+     "why": "automatable attack on an internet-facing service that handles sensitive data"},
+    {"when": {"exposure": "open", "human_impact": ["high", "very_high"]}, "decision": "Track*",
+     "why": "internet-facing service with sensitive data"},
+    {"when": {"exposure": "small"}, "decision": "Track", "why": "dev/build-only component"},
+    {"when": {}, "decision": "Track", "why": "no business amplifier"}
+  ]
+}

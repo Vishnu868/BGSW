@@ -6,6 +6,7 @@ answer is rejected by the verifier).
   3 Supply-Chain Forensics        non-CVE risks: typosquats, install scripts, lockfile tampering, containers, CI/CD
   4 Remediation Planner           safest allow-listed fix; next iteration after validation
   5 Critic / Reviewer             independent second opinion on P1 verdicts and on the plan
+  6 Business Context              what the app does for the business: internet-facing? sensitive data? (file:line facts)
 """
 from __future__ import annotations
 
@@ -77,12 +78,25 @@ CRITIC = Agent(
     tools=["item_details", "code_usage", "advisory", "registry_info", "dependency_tree"],
     max_steps=3)
 
-ALL = {a.name: a for a in (LEAD_ROUTE, LEAD_TRIAGE, VULN_ANALYST, FORENSICS, PLANNER, CRITIC)}
-FIVE = [("1", "Orchestrator & Triage (lead)", "lead_router + lead_triage"),
-        ("2", "Vulnerability Analyst", "vulnerability_analyst"),
-        ("3", "Supply-Chain Forensics", "supply_chain_forensics"),
-        ("4", "Remediation Planner", "remediation_planner"),
-        ("5", "Critic / Reviewer", "critic")]
+BUSINESS = Agent(
+    name="business_context", title="Business Context analyst",
+    mission=("Work out what this application does for the business, so risks can be ranked by business impact. "
+             "Find (a) which projects serve network traffic (internet_facing) and (b) which sensitive data they handle "
+             "(data_class: credentials, payment, personal, auth_tokens). Look at README, routes, models, config, Dockerfiles. "
+             "EVERY fact must cite the exact file:line that shows it; facts without real evidence are discarded. "
+             "You receive the facts the pattern rules already found - add only facts they missed."),
+    output_format=('{"business_function": "<one sentence>", "facts": [{"fact": "internet_facing|data_class", '
+                   '"value": true | "credentials|payment|personal|auth_tokens", "project": "<manifest e.g. package.json>", '
+                   '"evidence": "<file:line>"}], "confidence": <0-1>, "evidence_refs": ["E1", ...]}'),
+    tools=["list_files", "search_repo", "read_lines"], max_steps=5)
+
+ALL = {a.name: a for a in (LEAD_ROUTE, LEAD_TRIAGE, VULN_ANALYST, FORENSICS, PLANNER, CRITIC, BUSINESS)}
+AGENTS = [("1", "Orchestrator & Triage (lead)", "lead_router + lead_triage"),
+          ("2", "Vulnerability Analyst", "vulnerability_analyst"),
+          ("3", "Supply-Chain Forensics", "supply_chain_forensics"),
+          ("4", "Remediation Planner", "remediation_planner"),
+          ("5", "Critic / Reviewer", "critic"),
+          ("6", "Business Context", "business_context")]
 
 
 # ------------------------------------------------------------ rule fallbacks ---
