@@ -1,0 +1,2 @@
+# Only needed for the Claude provider (Gemini / Groq / rule-based work with the standard library alone)
+anthropic>=1.0

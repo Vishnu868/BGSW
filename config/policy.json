@@ -1,0 +1,10 @@
+{
+  "description": "Supply-chain policy evaluated by `python -m guardian policy <repo>`; exit code 1 blocks the build.",
+  "max_vuln_severity_production": "medium",
+  "block_typosquats": true,
+  "block_unlisted_install_scripts": true,
+  "allowed_install_scripts": ["esbuild", "fsevents", "@parcel/watcher", "lmdb", "msgpackr-extract", "sqlite3", "core-js"],
+  "require_sha_pinned_third_party_actions": true,
+  "require_image_digests": false,
+  "denied_packages": ["event-stream", "flatmap-stream"]
+}

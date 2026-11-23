@@ -1,0 +1,64 @@
+"""One-time setup after cloning: portable Node.js (checksum-verified) + the demo target repositories.
+
+    python scripts/setup.py            # node + targets
+    python scripts/setup.py --no-node  # only clone targets (if npm is already installed)
+
+Node.js is only used to generate missing npm lockfiles with --ignore-scripts (no package code runs).
+"""
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import subprocess
+import sys
+import urllib.request
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TARGETS = {
+    "juice-shop": "https://github.com/juice-shop/juice-shop",
+    "nodejs-goof": "https://github.com/snyk-labs/nodejs-goof",
+    "pygoat": "https://github.com/adeyosemanputra/pygoat",
+}
+
+
+def get_node() -> None:
+    dest = ROOT / "tools" / "node"
+    if dest.exists():
+        print(f"node already present: {dest}")
+        return
+    if sys.platform != "win32":
+        print("Non-Windows: install Node.js LTS with your package manager (npm must be on PATH).")
+        return
+    lts = next(v for v in json.load(urllib.request.urlopen("https://nodejs.org/dist/index.json")) if v["lts"])
+    ver = lts["version"]
+    name = f"node-{ver}-win-x64.zip"
+    sums = urllib.request.urlopen(f"https://nodejs.org/dist/{ver}/SHASUMS256.txt").read().decode()
+    expected = next(l.split()[0] for l in sums.splitlines() if l.endswith(" " + name))
+    print(f"downloading {name} ...")
+    data = urllib.request.urlopen(f"https://nodejs.org/dist/{ver}/{name}").read()
+    if hashlib.sha256(data).hexdigest() != expected:
+        raise SystemExit("checksum mismatch - aborting")
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        z.extractall(ROOT / "tools")
+    (ROOT / "tools" / f"node-{ver}-win-x64").rename(dest)
+    print(f"node {ver} installed in {dest} (checksum OK)")
+
+
+def get_targets() -> None:
+    (ROOT / "targets").mkdir(exist_ok=True)
+    for name, url in TARGETS.items():
+        d = ROOT / "targets" / name
+        if d.exists():
+            print(f"{name} already cloned")
+            continue
+        subprocess.run(["git", "clone", "--depth", "1", url, str(d)], check=True)
+
+
+if __name__ == "__main__":
+    if "--no-node" not in sys.argv:
+        get_node()
+    get_targets()
+    print("done - next: python -m guardian scan targets/juice-shop")

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16202c;--muted:#5b6876;--line:#dfe3e8;--accent:#1f4e9c;
+--crit:#9e0f2e;--high:#d9432b;--med:#e89b0c;--low:#c9b52a;--clean:#7d93ab;--direct:#2f6db5;--chip:#eef1f5}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f141a;--panel:#171e26;--ink:#e6ebf0;--muted:#9aa8b6;--line:#2a3440;--accent:#7fb0ff;--chip:#222c37;--clean:#6f8499;--direct:#5d97dd}}
+:root[data-theme=dark]{--bg:#0f141a;--panel:#171e26;--ink:#e6ebf0;--muted:#9aa8b6;--line:#2a3440;--accent:#7fb0ff;--chip:#222c37;--clean:#6f8499;--direct:#5d97dd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:16px 20px 8px;display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
+h1{font-size:20px;margin:0}h1 small{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
+.tiles{display:flex;flex-wrap:wrap;gap:10px;padding:0 20px 12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:110px}
+.tile b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.tile span{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--muted);font:inherit;cursor:pointer}
+nav button.on{color:var(--ink);border-color:var(--accent);font-weight:600}
+.tab{display:none;padding:12px 20px 20px}.tab.on{display:block}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+select,input[type=search]{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+label{color:var(--muted);font-size:13px}
+.split{display:grid;grid-template-columns:1fr 380px;gap:12px}
+#net{height:72vh;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+#side{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;height:72vh;overflow:auto}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.sev{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;padding:1px 7px;border-radius:999px;color:#fff}
+.sev.critical{background:var(--crit)}.sev.high{background:var(--high)}.sev.medium{background:var(--med)}.sev.low{background:var(--low);color:#222}.sev.info{background:var(--clean)}
+.chip{display:inline-block;background:var(--chip);border-radius:6px;padding:1px 7px;font-size:12px;margin:2px 4px 2px 0}
+.path{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--chip);border-radius:6px;padding:6px 8px;word-break:break-word}
+.f{border-top:1px solid var(--line);padding:10px 0}.f h4{margin:4px 0;font-size:13px}
+.ev{font-size:12px;color:var(--muted);margin:2px 0;word-break:break-word}.ev b{color:var(--ink);font-weight:600}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:7px 10px;word-break:break-word;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}
+th{color:var(--muted);font-weight:600;font-size:12px;cursor:pointer;user-select:none}
+tr.click{cursor:pointer}tr.click:hover{background:var(--chip)}
+.muted{color:var(--muted)}a{color:var(--accent)}
+.cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin-bottom:12px}
+.cat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+.cat b{font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto}
+@media (max-width:900px){.split{grid-template-columns:1fr}#net{height:60vh}#side{height:auto}header,.tiles,nav,.tab{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<header><h1 id="title"></h1><div class="muted" id="when"></div></header>
+<div class="tiles" id="tiles"></div>
+<nav id="nav">
+  <button data-t="graph" class="on">Dependency graph</button>
+  <button data-t="findings">Findings</button>
+  <button data-t="changes">What changed</button>
+  <button data-t="inventory">Inventory (SBOM)</button>
+  <button data-t="about">Scan notes</button>
+</nav>
+
+<section class="tab on" id="t-graph">
+  <div class="controls">
+    <label>View <select id="view">
+      <option value="risk">Risk view: direct deps + paths to every finding</option>
+      <option value="direct">Direct dependencies only</option>
+      <option value="full">Full graph (all components)</option>
+    </select></label>
+    <label><input type="checkbox" id="dev"> include dev-only</label>
+    <input type="search" id="q" placeholder="Find package (e.g. lodash)">
+    <span class="muted" id="count"></span>
+  </div>
+  <div class="legend" style="margin-bottom:8px">
+    <span><span class="dot" style="background:var(--crit)"></span>critical</span>
+    <span><span class="dot" style="background:var(--high)"></span>high</span>
+    <span><span class="dot" style="background:var(--med)"></span>medium</span>
+    <span><span class="dot" style="background:var(--low)"></span>low</span>
+    <span><span class="dot" style="background:var(--direct)"></span>direct, no finding</span>
+    <span><span class="dot" style="background:var(--clean)"></span>transitive, no finding</span>
+    <span>&#9733; project &nbsp; &#9632; container image &nbsp; &#9670; CI action &nbsp; faded = dev-only</span>
+  </div>
+  <div class="split"><div id="net"></div><aside id="side"><p class="muted">Click a node to see its version, dependency path, and evidence.</p></aside></div>
+</section>
+
+<section class="tab" id="t-findings">
+  <div class="cats" id="cats"></div>
+  <div class="controls">
+    <label>Severity <select id="fsev"><option value="">all</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>info</option></select></label>
+    <label>Category <select id="fcat"><option value="">all</option></select></label>
+    <label><input type="checkbox" id="fdev" checked> include dev-only</label>
+    <input type="search" id="fq" placeholder="Filter text">
+  </div>
+  <div class="tablewrap"><table><thead><tr><th>Severity</th><th>Cat.</th><th>Finding</th><th>Component</th><th>Recommendation</th></tr></thead><tbody id="ftable"></tbody></table></div>
+</section>
+
+<section class="tab" id="t-changes"><div id="changes"></div></section>
+
+<section class="tab" id="t-inventory">
+  <div class="controls"><input type="search" id="iq" placeholder="Filter components"><span class="muted" id="icount"></span></div>
+  <div class="tablewrap"><table><thead><tr><th>Component</th><th>Version</th><th>Ecosystem</th><th>Type</th><th>Scope</th><th>Introduced by</th><th>Findings</th></tr></thead><tbody id="itable"></tbody></table></div>
+</section>
+
+<section class="tab" id="t-about"><div id="about"></div></section>
+
+<script>/*__VIS__*/</script>
+<script>
+const D = __DATA__;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const SEVRANK = {critical:4, high:3, medium:2, low:1, info:0, "":-1};
+const byId = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+const F = D.findings;
+
+$("#title").innerHTML = `Software Supply Chain Guardian <small>${esc(D.meta.repo)}</small>`;
+$("#when").textContent = `scanned ${D.meta.scanned_at} · vulnerability source: ${D.meta.osv_source}`;
+const libs = D.nodes.filter(n => n.kind === "library");
+const sevCount = s => F.filter(f => f.severity === s).length;
+const tiles = [
+  [libs.length, "components"], [libs.filter(n => n.direct).length, "direct"],
+  [libs.filter(n => !n.direct).length, "transitive"], [D.edges.length, "dependency edges"],
+  [sevCount("critical"), "critical findings"], [sevCount("high"), "high findings"],
+  [F.length, "total findings"], [D.meta.ecosystems.join(", "), "ecosystems"]];
+$("#tiles").innerHTML = tiles.map(([v, l]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+
+document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#nav button, .tab").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); $("#t-" + b.dataset.t).classList.add("on");
+});
+
+/* ---------------- graph ---------------- */
+let network = null;
+function color(n) {
+  if (n.sev) return css({critical:"--crit", high:"--high", medium:"--med", low:"--low", info:"--clean"}[n.sev]);
+  if (n.kind === "repository" || n.kind === "application") return css("--accent");
+  return n.direct ? css("--direct") : css("--clean");
+}
+function visibleSet() {
+  const view = $("#view").value, dev = $("#dev").checked, keep = new Set();
+  const ok = n => n && (dev || !n.dev || n.kind !== "library");
+  D.nodes.forEach(n => {
+    if (n.kind !== "library") { keep.add(n.id); return; }
+    if (!ok(n)) return;
+    if (view === "full") keep.add(n.id);
+    else if (n.direct) keep.add(n.id);
+    if (view === "risk" && n.f.length) n.path.forEach(p => ok(byId[p]) && keep.add(p));
+  });
+  return keep;
+}
+function draw(focus) {
+  const keep = visibleSet(), view = $("#view").value;
+  const nodes = D.nodes.filter(n => keep.has(n.id)).map(n => {
+    const shape = n.kind === "repository" || n.kind === "application" ? "star" : n.kind === "container" ? "square" : n.kind === "action" ? "diamond" : "dot";
+    const size = n.kind === "repository" ? 30 : n.kind === "application" ? 24 : n.sev ? 10 + 3 * SEVRANK[n.sev] : n.direct ? 9 : 6;
+    const label = (n.kind === "library" && view === "full" && !n.direct && !n.sev) ? undefined : (n.kind === "library" ? `${n.name}@${n.version}` : n.name);
+    return {id: n.id, label, shape, size, color: {background: color(n), border: n.install ? "#000" : color(n)},
+            borderWidth: n.install ? 2 : 1, opacity: n.dev ? 0.45 : 1,
+            font: {color: css("--ink"), size: n.kind !== "library" ? 15 : 11}, title: `${n.name}@${n.version}`};
+  });
+  const edges = D.edges.filter(([a, b]) => keep.has(a) && keep.has(b)).map(([a, b]) => ({from: a, to: b}));
+  $("#count").textContent = `${nodes.length} nodes · ${edges.length} edges shown`;
+  const big = nodes.length > 600;
+  if (network) network.destroy();
+  network = new vis.Network($("#net"), {nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges)}, {
+    layout: {improvedLayout: !big},
+    edges: {arrows: {to: {enabled: true, scaleFactor: .4}}, color: {color: css("--line"), highlight: css("--accent")}, width: .6, smooth: false},
+    physics: {solver: "forceAtlas2Based", forceAtlas2Based: {gravitationalConstant: big ? -40 : -70, springLength: big ? 40 : 90},
+              stabilization: {iterations: big ? 120 : 250}},
+    interaction: {hover: true, tooltipDelay: 120}});
+  network.once("stabilizationIterationsDone", () => network.setOptions({physics: false}));
+  network.on("click", p => p.nodes.length && show(p.nodes[0]));
+  if (focus && keep.has(focus)) setTimeout(() => { network.selectNodes([focus]); network.focus(focus, {scale: 1.2, animation: true}); }, 400);
+}
+function findingHtml(i) {
+  const f = F[i];
+  return `<div class="f"><span class="sev ${f.severity}">${f.severity}</span> <span class="chip">${esc(f.category)} ${esc(f.category_name)}</span>
+    <h4>${esc(f.title)}</h4>
+    ${f.evidence.map(e => `<div class="ev"><b>${esc(e.source.startsWith("http") ? "advisory" : e.source)}:</b> ${e.source.startsWith("http") ? `<a href="${esc(e.source)}" target="_blank" rel="noopener">${esc(e.source.split("/").pop())}</a> ` : ""}${esc(e.detail)}${e.file ? ` <span class="chip">${esc(e.file)}${e.line ? ":" + e.line : ""}</span>` : ""}</div>`).join("")}
+    ${f.recommendation ? `<div class="ev"><b>Suggested:</b> ${esc(f.recommendation)}</div>` : ""}</div>`;
+}
+function show(id) {
+  const n = byId[id]; if (!n) return;
+  const path = n.path.map(p => byId[p] ? (byId[p].kind === "library" ? `${byId[p].name}@${byId[p].version}` : byId[p].name) : p).join("  →  ");
+  $("#side").innerHTML = `<h3 style="margin:0 0 4px">${esc(n.name)} <span class="muted">${esc(n.version)}</span></h3>
+    <div>${n.kind !== "library" ? `<span class="chip">${esc(n.kind)}</span>` : `<span class="chip">${n.direct ? "direct" : "transitive"}</span><span class="chip">${n.dev ? "dev-only" : "production"}</span><span class="chip">${esc(n.eco)}</span>`}
+    ${n.install ? '<span class="chip">has install script</span>' : ""}${n.exact ? "" : '<span class="chip">version is a declared range</span>'}</div>
+    ${n.purl ? `<div class="ev" style="margin-top:6px">${esc(n.purl)}</div>` : ""}
+    ${n.resolved ? `<div class="ev">resolved: ${esc(n.resolved)}</div>` : ""}
+    <p style="margin:10px 0 4px"><b>Dependency path</b></p><div class="path">${esc(path) || "(root)"}</div>
+    ${n.via.length ? `<p style="margin:10px 0 4px"><b>Pulled in by direct dependency</b></p>${n.via.map(v => `<span class="chip">${esc(v)}</span>`).join("")}` : ""}
+    <p style="margin:12px 0 0"><b>Findings (${n.f.length})</b></p>${n.f.length ? n.f.map(findingHtml).join("") : '<p class="muted">No findings for this component.</p>'}`;
+}
+$("#view").onchange = () => draw(); $("#dev").onchange = () => draw();
+$("#q").onkeydown = e => {
+  if (e.key !== "Enter") return;
+  const q = $("#q").value.trim().toLowerCase(); if (!q) return;
+  const hit = D.nodes.filter(n => n.name.toLowerCase().includes(q)).sort((a, b) => SEVRANK[b.sev] - SEVRANK[a.sev] || a.name.length - b.name.length)[0];
+  if (!hit) { $("#count").textContent = "not found"; return; }
+  if (!visibleSet().has(hit.id)) { $("#view").value = "full"; if (hit.dev) $("#dev").checked = true; }
+  draw(hit.id); show(hit.id);
+};
+
+/* ---------------- findings table ---------------- */
+const catNames = {}; F.forEach(f => catNames[f.category] = f.category_name);
+Object.keys(catNames).sort().forEach(c => $("#fcat").insertAdjacentHTML("beforeend", `<option value="${c}">${c} ${esc(catNames[c])}</option>`));
+const ALLCATS = D.meta.categories;
+$("#cats").innerHTML = Object.entries(ALLCATS).map(([k, v]) => {
+  const fs = F.filter(f => f.category === k), top = fs.map(f => f.severity).sort((a, b) => SEVRANK[b] - SEVRANK[a])[0];
+  return `<div class="cat"><b>${fs.length}</b> · ${esc(k)} ${esc(v)} ${top ? `<span class="sev ${top}">${top}</span>` : '<span class="muted">checked, none found</span>'}</div>`;
+}).join("");
+function renderFindings() {
+  const s = $("#fsev").value, c = $("#fcat").value, q = $("#fq").value.toLowerCase(), dev = $("#fdev").checked;
+  const rows = F.map((f, i) => [f, i]).filter(([f]) => (!s || f.severity === s) && (!c || f.category === c)
+      && (dev || !(byId[f.component] && byId[f.component].dev))
+      && (!q || JSON.stringify(f).toLowerCase().includes(q)))
+    .sort(([a], [b]) => SEVRANK[b.severity] - SEVRANK[a.severity] || (b.data.cvss || 0) - (a.data.cvss || 0));
+  $("#ftable").innerHTML = rows.map(([f, i]) => {
+    const n = byId[f.component];
+    return `<tr class="click" data-c="${esc(f.component)}"><td><span class="sev ${f.severity}">${f.severity}</span></td><td>${esc(f.category)}</td>
+      <td>${esc(f.title)}<div class="ev">${esc(f.evidence.slice(0, 3).map(e => e.detail).join(" · "))}</div></td>
+      <td>${n ? `${esc(n.name)}@${esc(n.version)}<div class="ev">${n.direct ? "direct" : "transitive"}${n.dev ? ", dev-only" : ""}</div>` : '<span class="muted">repository</span>'}</td>
+      <td class="ev">${esc(f.recommendation)}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="muted">No findings match.</td></tr>`;
+  document.querySelectorAll("#ftable tr.click").forEach(tr => tr.onclick = () => {
+    const id = tr.dataset.c; if (!byId[id]) return;
+    $('#nav button[data-t="graph"]').click(); if (!visibleSet().has(id)) { if (byId[id].dev) $("#dev").checked = true; }
+    draw(id); show(id);
+  });
+}
+["#fsev", "#fcat", "#fdev"].forEach(s => $(s).onchange = renderFindings); $("#fq").oninput = renderFindings;
+
+/* ---------------- changes ---------------- */
+function renderChanges() {
+  const c = D.changes;
+  if (!c || !c.baseline) { $("#changes").innerHTML = `<p class="muted">No baseline yet. The first scan of a repository becomes its baseline; the next scan (or <code>--baseline</code>) shows what was added, removed, upgraded, or tampered with.</p>`; return; }
+  const list = (t, xs, fmt) => `<h3>${esc(t)} (${xs.length})</h3>` + (xs.length ? `<div class="tablewrap"><table><tbody>${xs.map(x => `<tr><td>${fmt(x)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">none</p>');
+  $("#changes").innerHTML = `<p class="muted">Compared with baseline from ${esc(c.baseline)}</p>`
+    + list("Integrity / source changed for the same version (possible tampering)", c.tampered, x => `<b>${esc(x.name)}@${esc(x.version)}</b> ${esc(x.field)}: <span class="ev">${esc(x.old)} → ${esc(x.new)}</span>`)
+    + list("Added", c.added, x => `${esc(x.name)}@${esc(x.version)} ${x.direct ? '<span class="chip">direct</span>' : ""}${x.install_script ? '<span class="chip">install script</span>' : ""}`)
+    + list("Version changed", c.changed, x => `${esc(x.name)}: ${esc(x.old)} → ${esc(x.new)}`)
+    + list("Removed", c.removed, x => `${esc(x.name)}@${esc(x.version)}`);
+}
+
+/* ---------------- inventory ---------------- */
+function renderInv() {
+  const q = $("#iq").value.toLowerCase();
+  const rows = D.nodes.filter(n => n.kind !== "repository" && n.kind !== "application" && (!q || (n.name + n.version + n.eco).toLowerCase().includes(q)))
+    .sort((a, b) => SEVRANK[b.sev] - SEVRANK[a.sev] || (b.direct - a.direct) || a.name.localeCompare(b.name));
+  $("#icount").textContent = `${rows.length} components`;
+  $("#itable").innerHTML = rows.slice(0, 2500).map(n => `<tr class="click" data-c="${esc(n.id)}"><td>${esc(n.name)}</td><td>${esc(n.version)}</td><td>${esc(n.eco)}</td>
+    <td>${esc(n.kind === "library" ? (n.direct ? "direct" : "transitive") : n.kind)}</td><td>${n.dev ? "dev" : "prod"}</td>
+    <td class="ev">${esc(n.via.slice(0, 3).join(", "))}</td><td>${n.sev ? `<span class="sev ${n.sev}">${n.f.length}</span>` : ""}</td></tr>`).join("");
+  document.querySelectorAll("#itable tr.click").forEach(tr => tr.onclick = () => { $('#nav button[data-t="graph"]').click(); const id = tr.dataset.c; if (!visibleSet().has(id)) { $("#view").value = "full"; $("#dev").checked = true; } draw(id); show(id); });
+}
+$("#iq").oninput = renderInv;
+
+$("#about").innerHTML = `<h3>What was scanned</h3>${Object.entries(D.meta.files).map(([k, v]) => `<p><b>${esc(k)}</b>: ${v.map(x => `<span class="chip">${esc(x)}</span>`).join("")}</p>`).join("")}
+  <h3>Honest limitations</h3>${D.notes.length ? "<ul>" + D.notes.map(n => `<li>${esc(n)}</li>`).join("") + "</ul>" : '<p class="muted">none</p>'}
+  <h3>How findings are produced</h3><p>Every finding comes from a deterministic check with the evidence shown (advisory id, file and line, lockfile field, registry data). No finding on this page is generated by an AI model.</p>`;
+
+renderFindings(); renderChanges(); renderInv(); draw();
+</script>
+</body>
+</html>
