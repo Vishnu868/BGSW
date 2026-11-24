@@ -10,7 +10,9 @@ Day 2 (Brain & Shield)  analyze   <repo>             5 agents + symbolic verifie
                         validate  <repo>             build/test/rescan, before-vs-after verdict (+ graph_diff.html)
                         diff      <repo>             visual dependency graph before vs after the fixes
                         report    <repo>             final Guardian report (JSON + MD + HTML)
-                        run       <folder|git-url>   everything above in order (approval still interactive)
+                        pr        <repo>             open a pull request on the scanned GitHub repository
+                        run       <github-link>      everything above in order, ending in a pull request
+                                                     (approval and the final "open the PR?" stay interactive)
 Extras                  policy    <repo>             policy-as-code gate (exit 1 on violation)
                         ui                           control panel in the browser: one button per step, live output
                         llm-check                    test the configured AI providers
@@ -75,6 +77,12 @@ def main(argv=None) -> int:
     df.add_argument("repo")
     r = sub.add_parser("report")
     r.add_argument("repo")
+    pr = sub.add_parser("pr", help="open a pull request on the scanned GitHub repository")
+    pr.add_argument("repo")
+    pr.add_argument("--dry-run", action="store_true", help="build the branch and pr_preview.md, push nothing")
+    pr.add_argument("--draft", action="store_true", help="open the pull request as a draft")
+    pr.add_argument("--yes", action="store_true", help="do not ask before pushing (the plan approval still applies)")
+    pr.add_argument("--force", action="store_true", help="open it even if validation failed")
     po = sub.add_parser("policy")
     po.add_argument("repo")
     po.add_argument("--policy", default=str(ROOT / "config" / "policy.json"))
@@ -82,8 +90,10 @@ def main(argv=None) -> int:
     ui = sub.add_parser("ui")
     ui.add_argument("--port", type=int, default=8780)
     ui.add_argument("--no-browser", action="store_true")
-    full = sub.add_parser("run")
-    full.add_argument("target")
+    full = sub.add_parser("run", help="GitHub link -> scan, analyze, plan, approve, apply, validate, report, pull request")
+    full.add_argument("target", help="GitHub link, e.g. https://github.com/owner/repo")
+    full.add_argument("--no-pr", action="store_true", help="stop after the report (no pull request)")
+    full.add_argument("--draft", action="store_true", help="open the pull request as a draft")
     full.add_argument("--top", type=int, default=6)
     full.add_argument("--web", action="store_true")
     full.add_argument("--install", action="store_true")
@@ -132,6 +142,14 @@ def main(argv=None) -> int:
     elif args.cmd == "report":
         from .report import final
         final.build(_dir(args.repo))
+    elif args.cmd == "pr":
+        from .remediate import publish
+        try:
+            out = publish.run(_dir(args.repo), dry_run=args.dry_run, draft=args.draft, yes=args.yes, force=args.force)
+        except publish.Refused:
+            return 2
+        if out.get("url"):
+            print(out["url"])
     elif args.cmd == "policy":
         from . import policy
         res = policy.evaluate(_dir(args.repo), Path(args.policy))
@@ -150,6 +168,10 @@ def main(argv=None) -> int:
         from . import analyze, validate
         from .remediate import apply, approval, planner
         from .report import final
+        from .pipeline import parse_github
+        if not parse_github(args.target):
+            raise SystemExit("run needs a GitHub link, e.g. https://github.com/owner/repo "
+                             "(to scan a local folder step by step, use `guardian scan <folder>`)")
         out = scan_run(args.target, RUNS)
         an = analyze.run(out, top=args.top)
         plan = planner.build(out, an)
@@ -162,6 +184,14 @@ def main(argv=None) -> int:
             apply.run(out)
             validate.run(out, install=args.install, test_cmd=args.test_cmd)
         final.build(out)
+        if rec["decision"] == "approved" and not args.no_pr:
+            from .remediate import publish
+            try:
+                res = publish.run(out, draft=args.draft)
+            except publish.Refused:
+                return 2
+            if res.get("url"):
+                print(f"Pull request: {res['url']}")
     return 0
 
 
