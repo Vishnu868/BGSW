@@ -10,6 +10,7 @@ Output: sandbox branch + remediation.patch (PR-ready diff) + apply.json
 from __future__ import annotations
 
 import json
+import time
 import os
 import re
 import shutil
@@ -139,6 +140,28 @@ def _do(sb: Path, a: dict) -> str:
     raise RuntimeError(f"no handler for {t}")
 
 
+
+def progress(run_dir: Path, stage: str, **kw) -> None:
+    """Live progress for the monitor page: runs/<repo>/progress.json, rewritten after every step."""
+    f = run_dir / "progress.json"
+    try:
+        cur = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    except (OSError, ValueError):
+        cur = {}
+    if stage == "start":
+        cur = {"stage": "apply", "started": time.strftime("%H:%M:%S"), "plan_hash": kw.get("plan_hash", ""),
+               "actions": {a: {"status": "pending"} for a in kw.get("actions", [])}, "lockfiles": [], "events": []}
+    else:
+        cur["stage"] = stage
+        if "action" in kw:
+            cur.setdefault("actions", {}).setdefault(kw["action"], {}).update(
+                {"status": kw.get("status", ""), "detail": kw.get("detail", ""), "at": time.strftime("%H:%M:%S")})
+        if "lockfile" in kw:
+            cur.setdefault("lockfiles", []).append(kw["lockfile"])
+    if kw.get("event"):
+        cur.setdefault("events", []).append(f"{time.strftime('%H:%M:%S')}  {kw['event']}")
+    f.write_text(json.dumps(cur, indent=1), encoding="utf-8")
+
 def run(run_dir: Path, dry_run: bool = False, log=print) -> dict:
     plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
     trail = run_dir / "audit.jsonl"
@@ -156,6 +179,8 @@ def run(run_dir: Path, dry_run: bool = False, log=print) -> dict:
     sb = run_dir / "sandbox" / src.name
     if sb.exists():
         shutil.rmtree(sb, onerror=lambda f, p, e: (os.chmod(p, 0o700), f(p)))
+    progress(run_dir, "start", plan_hash=plan["plan_hash"], actions=[a["id"] for a in chosen],
+             event=f"approval by {ap['operator']} verified (plan {plan['plan_hash'][:12]}); copying sandbox")
     log(f"[apply] sandbox copy -> {sb}")
     shutil.copytree(src, sb, ignore=COPY_IGNORE)
     _git(sb, "init", "-q", "-b", "main")
@@ -168,23 +193,31 @@ def run(run_dir: Path, dry_run: bool = False, log=print) -> dict:
         if (run_dir / "STOP").exists():
             log("[apply] kill switch activated mid-run - stopping")
             results.append({"id": a["id"], "status": "skipped", "detail": "kill switch"})
+            progress(run_dir, "apply", action=a["id"], status="skipped", detail="kill switch", event=f"{a['id']} skipped: kill switch")
             continue
+        progress(run_dir, "apply", action=a["id"], status="running", event=f"{a['id']} applying {a['type']}")
         try:
             detail = _do(sb, a)
             results.append({"id": a["id"], "type": a["type"], "status": "applied", "detail": detail})
             touched_npm |= set(a["params"].get("manifests", [])) if a["type"].startswith("npm_") else set()
+            progress(run_dir, "apply", action=a["id"], status="applied", detail=detail, event=f"{a['id']} applied: {detail}")
             log(f"[apply] {a['id']} {detail}")
         except Exception as e:
             results.append({"id": a["id"], "type": a["type"], "status": "failed", "detail": str(e)})
+            progress(run_dir, "apply", action=a["id"], status="failed", detail=str(e), event=f"{a['id']} FAILED: {e}")
             log(f"[apply] {a['id']} FAILED: {e}")
     lock_results = []
     npm = str(NPM) if NPM.exists() else shutil.which("npm")
+    if touched_npm:
+        progress(run_dir, "lockfiles", event="regenerating lockfiles with --ignore-scripts")
     for m in sorted(touched_npm):
         d = (sb / m).parent
         r = subprocess.run([npm, "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund",
                             "--legacy-peer-deps"], cwd=d, capture_output=True, text=True)
         lock_results.append({"manifest": m, "ok": r.returncode == 0,
                              "output": (r.stderr or r.stdout).strip().splitlines()[-5:]})
+        progress(run_dir, "lockfiles", lockfile={"manifest": m, "ok": r.returncode == 0},
+                 event=f"lockfile {m}: {'resolved OK (no scripts run)' if r.returncode == 0 else 'FAILED'}")
         log(f"[apply] lockfile for {m}: {'resolved OK' if r.returncode == 0 else 'FAILED'}")
     _git(sb, "add", "-A")
     msg = "Guardian remediation\n\n" + "\n".join(f"{r['id']}: {r['detail']}" for r in results if r["status"] == "applied") + \
@@ -197,6 +230,7 @@ def run(run_dir: Path, dry_run: bool = False, log=print) -> dict:
            "results": results, "lockfiles": lock_results, "diffstat": full,
            "rollback": f"discard the sandbox, or: git -C \"{sb}\" checkout main", "approved_by": ap["operator"]}
     (run_dir / "apply.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    progress(run_dir, "applied", event=f"remediation.patch written on branch {branch}; next: validate (rescan)")
     audit.log(trail, "apply_done", {"branch": branch, "applied": [r["id"] for r in results if r["status"] == "applied"],
                                     "failed": [r["id"] for r in results if r["status"] == "failed"]})
     return out

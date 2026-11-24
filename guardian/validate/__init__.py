@@ -57,6 +57,8 @@ def run(run_dir: Path, install: bool = False, test_cmd: str = "", timeout: int =
         log(f"[validate] running tests: {test_cmd}")
         checks["test"] = _run(test_cmd, sb, timeout)
 
+    from ..remediate.apply import progress
+    progress(run_dir, "validating", event="rescanning the fixed sandbox with the full Day 1 pipeline")
     log("[validate] rescanning the remediated sandbox")
     after_root = run_dir / "after"
     out = scan(str(sb), after_root, offline=False, baseline=run_dir / "sbom.cdx.json", gen_locks=False,
@@ -115,6 +117,7 @@ def run(run_dir: Path, install: bool = False, test_cmd: str = "", timeout: int =
            "after_report": str(out / "guardian.html"),
            "rollback": ap["rollback"] if verdict == "failed" else "not needed"}
     (run_dir / "validation.json").write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
+    progress(run_dir, "validated", event=f"verdict {verdict.upper()}: {len(resolved)} resolved, {len(new)} new")
     audit.log(trail, "validate_done", {"verdict": verdict, "resolved": len(resolved), "new": len(new)})
     log(f"[validate] verdict: {verdict.upper()} - resolved {len(resolved)} findings, {len(new)} new, "
         f"critical {res['before']['by_severity']['critical']} -> {res['after']['by_severity']['critical']}, "

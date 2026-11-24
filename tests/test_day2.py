@@ -350,3 +350,24 @@ class ControlPanelTest(unittest.TestCase):
         self.assertEqual(ui.command("scan", "", "https://github.com/snyk-labs/nodejs-goof", False)[-1],
                          "https://github.com/snyk-labs/nodejs-goof")
         self.assertEqual(ui.INTERACTIVE, {"business", "review"})   # only these get an input pipe
+
+
+class HealthCheckTest(unittest.TestCase):
+    """Is the fixed app still working: find how the app uses a package and spot APIs missing in the new version."""
+
+    def test_usages_and_breaking_detection(self):
+        from guardian.validate import health
+        root = Path(tempfile.mkdtemp())
+        (root / "lib").mkdir()
+        (root / "lib" / "auth.ts").write_text(
+            "import expressJwt from 'express-jwt'\nimport jwt from 'jsonwebtoken'\nimport { decode } from 'jsonwebtoken'\n"
+            "const key = fs.readFileSync('keys/jwt.pub')\n"
+            "export const guard = () => expressJwt({ secret: key })\nexport const t = jwt.sign({}, key)\n", encoding="utf-8")
+        ej = health.usages(root, "express-jwt")
+        self.assertEqual([(n["need"], n["where"]) for n in ej], [("callable", "lib/auth.ts:5")])
+        names = {n["name"] for n in health.usages(root, "jsonwebtoken")}
+        self.assertEqual(names, {"sign", "decode"})                   # 'keys/jwt.pub' is a path, not a use
+        old = health._surface({"type": "function", "keys": [], "esModule": False, "defaultType": None, "defaultKeys": []})
+        new = health._surface({"type": "object", "keys": ["expressjwt"], "esModule": True, "defaultType": None, "defaultKeys": []})
+        self.assertTrue(health._has(old, ej[0]))                      # v0.1: module.exports = function
+        self.assertFalse(health._has(new, ej[0]))                     # v7: no default function -> breaking

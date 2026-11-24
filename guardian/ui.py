@@ -76,7 +76,7 @@ def command(step: str, repo: str, target: str, offline: bool) -> list[str]:
     simple = {"analyze": ["analyze", repo] + off, "business": ["business", repo], "review": ["review", repo],
               "plan": ["plan", repo] + off, "approve": ["approve", repo, "--web"], "apply": ["apply", repo],
               "validate": ["validate", repo], "diff": ["diff", repo], "report": ["report", repo],
-              "policy": ["policy", repo]}
+              "policy": ["policy", repo], "health": ["health", repo]}
     if step not in simple:
         raise ValueError(f"unknown step {step}")
     return g + simple[step]
@@ -166,6 +166,23 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/state":
             stops = {r: (RUNS / r / "STOP").exists() for r in repos()}
             return self._json({"repos": repos(), "targets": targets(), "stop": stops})
+        if u.path == "/api/monitor":
+            repo = (parse_qs(u.query).get("repo") or [""])[0]
+            if repo not in repos():
+                return self._json({"error": "unknown repository"}, 400)
+            d = RUNS / repo
+
+            def load(name):
+                try:
+                    return json.loads((d / name).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    return None
+            plan = load("plan.json")
+            if plan:
+                plan = {"plan_hash": plan.get("plan_hash"), "actions": [{k: a.get(k) for k in (
+                    "id", "type", "params", "risk", "priority", "score", "finding_ids")} for a in plan.get("actions", [])]}
+            return self._json({"plan": plan, "approval": load("approval.json"), "progress": load("progress.json"),
+                               "apply": load("apply.json"), "validation": load("validation.json"), "health": load("health.json")})
         if u.path == "/api/output":
             since = int((parse_qs(u.query).get("since") or ["0"])[0] or 0)
             return self._json(JOB.state(since))
@@ -236,13 +253,17 @@ def serve(port: int = 8780, open_browser: bool = True) -> None:
 
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Guardian control panel</title>
+<title>Guardian control center</title>
 <style>
 :root{--bg:#f3f5f9;--card:#fff;--ink:#16202c;--muted:#5b6876;--line:#d5dbe3;--navy:#1e3a8a;--pink:#c8194e;--teal:#0e7c86;
---green:#1f7a3a;--amber:#d08a00;--purple:#6b3fa0}
+--green:#1f7a3a;--amber:#d08a00;--purple:#6b3fa0;--chip:#eef1f5;--con:#0f1722}
 *{box-sizing:border-box}body{margin:0;font:14px/1.45 "Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line)}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 20px;background:var(--card);border-bottom:1px solid var(--line)}
 h1{margin:0;font-size:19px;margin-right:auto}h1 span{color:var(--pink)}
+nav.tabs{display:flex;gap:2px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;color:var(--muted);font:inherit;cursor:pointer;white-space:nowrap;border-radius:0}
+nav.tabs button.on{color:var(--ink);border-color:var(--pink);font-weight:600}
+.page{display:none}.page.on{display:block}
 select,input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;max-width:100%}
 label.chk{display:flex;gap:6px;align-items:center;color:var(--muted)}
 .wrap{display:grid;grid-template-columns:400px 1fr;gap:16px;padding:16px 20px}
@@ -256,40 +277,90 @@ label.chk{display:flex;gap:6px;align-items:center;color:var(--muted)}
 .step.ok .n{background:var(--green);color:#fff}.step.bad .n{background:var(--pink);color:#fff}.step.run .n{background:var(--amber);color:#fff}
 .step b{display:block}.step small{color:var(--muted)}
 button{font:inherit;border:0;border-radius:8px;padding:7px 12px;background:var(--navy);color:#fff;cursor:pointer;white-space:nowrap}
-button:disabled{opacity:.45;cursor:not-allowed}button.alt{background:#e8ecf3;color:var(--ink)}button.warn{background:var(--pink)}
+button:disabled{opacity:.45;cursor:not-allowed}button.alt{background:#e8ecf3;color:var(--ink)}button.warn{background:var(--pink)}button.go{background:var(--green)}
 .tag{font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-left:4px;vertical-align:1px}
 .ai{background:#efe7fa;color:var(--purple)}.human{background:#fdeee0;color:#b4570c}.rules{background:#e6ecf8;color:var(--navy)}
-.console{background:#0f1722;color:#dfe6ee;border-radius:12px;padding:14px;font:13px/1.5 Consolas,monospace;white-space:pre-wrap;
- word-break:break-word;height:calc(100vh - 290px);min-height:320px;overflow:auto}
+.console{background:var(--con);color:#dfe6ee;border-radius:12px;padding:14px;font:13px/1.5 Consolas,monospace;white-space:pre-wrap;word-break:break-word;overflow:auto}
+#out{height:calc(100vh - 330px);min-height:320px}.mini{height:220px}
 .console a{color:#7fc4ff}.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.links{display:flex;gap:8px;flex-wrap:wrap}.links a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 10px;
- color:var(--navy);text-decoration:none}.links a:hover{border-color:var(--navy)}
-#status{color:var(--muted)}#answer{flex:1;min-width:160px}
-.stop-on{color:var(--pink);font-weight:600}
-@media (max-width:980px){.wrap{grid-template-columns:1fr}.console{height:420px}}
+.links{display:flex;gap:8px;flex-wrap:wrap}.links a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:5px 10px;color:var(--navy);text-decoration:none}
+#status{color:var(--muted)}#answer{flex:1;min-width:160px}.stop-on{color:var(--pink);font-weight:600}
+.pad{padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h3{margin:0 0 8px;font-size:15px}
+.pipe{display:flex;gap:6px;flex-wrap:wrap}
+.pipe span{padding:6px 12px;border-radius:999px;background:#e8ecf3;color:var(--muted);font-size:13px;font-weight:600}
+.pipe span.done{background:#e4f4ea;color:var(--green)}.pipe span.now{background:var(--amber);color:#fff;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.6}}
+.kpis{display:flex;gap:10px;flex-wrap:wrap}.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:130px}
+.kpi b{display:block;font-size:22px}.kpi small{color:var(--muted)}
+table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top;font-size:13px}
+th{color:var(--muted);font-size:12px;font-weight:600}
+.st{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:#9aa4b1}
+.st.pending{background:#9aa4b1}.st.running{background:var(--amber);animation:pulse 1.2s infinite}.st.applied,.st.compatible,.st.verified,.st.working{background:var(--green)}
+.st.failed,.st.breaking{background:var(--pink)}.st.partial,.st.unknown{background:var(--amber)}.st.approved{background:var(--navy)}.st.na{background:#9aa4b1}
+.verdict{font-size:20px;font-weight:700;padding:12px 16px;border-radius:12px;color:#fff}
+.v-working{background:var(--green)}.v-needs{background:var(--pink)}.v-unknown{background:#7d8794}
+.code{font:12px Consolas,monospace;background:var(--chip);border-radius:6px;padding:4px 8px;display:block;margin-top:3px;word-break:break-word}
+.muted{color:var(--muted)}iframe{width:100%;height:calc(100vh - 150px);border:0;background:var(--card)}
+.layers li{margin:4px 0}
+@media (max-width:980px){.wrap{grid-template-columns:1fr}#out{height:420px}}
 </style></head><body>
-<header><h1><span>Guardian</span> control panel</h1>
+<header><h1><span>Guardian</span> control center</h1>
 <label>Repository <select id="repo"></select></label>
 <label class="chk"><input type="checkbox" id="offline"> offline (cached data only)</label></header>
-<div class="wrap">
-<div class="col" id="steps"></div>
-<div class="col">
- <div class="bar"><b id="title">Output</b><span id="status"></span><span style="flex:1"></span>
-  <button class="warn" id="stopBtn" disabled>Stop step</button></div>
- <div class="console" id="out">Press a button on the left. Steps run one at a time, in order; the output appears here live.</div>
- <div class="bar"><input type="text" id="answer" placeholder="answer a question (business / review) and press Enter" disabled>
-  <button class="alt" data-a="c" disabled>c</button><button class="alt" data-a="r" disabled>r</button>
-  <button class="alt" data-a="s" disabled>s</button><button class="alt" data-a="d" disabled>d</button>
-  <button id="sendBtn" disabled>Send</button></div>
- <div class="links" id="links"></div>
-</div></div>
+<nav class="tabs" id="tabs">
+ <button data-p="steps" class="on">Run steps</button><button data-p="monitor">Live fix monitor</button>
+ <button data-p="health">App health</button><button data-p="diff">Graph before vs after</button>
+ <button data-p="dash">Dashboard</button><button data-p="report">Final report</button></nav>
+
+<section class="page on" id="p-steps"><div class="wrap">
+ <div class="col" id="steps"></div>
+ <div class="col">
+  <div class="bar"><b id="title">Output</b><span id="status"></span><span style="flex:1"></span><button class="warn" id="stopBtn" disabled>Stop step</button></div>
+  <div class="console" id="out">Press a button on the left. Steps run one at a time, in order; the output appears here live.</div>
+  <div class="bar"><input type="text" id="answer" placeholder="answer a question (business / review) and press Enter" disabled>
+   <button class="alt" data-a="c" disabled>c</button><button class="alt" data-a="r" disabled>r</button>
+   <button class="alt" data-a="s" disabled>s</button><button class="alt" data-a="d" disabled>d</button><button id="sendBtn" disabled>Send</button></div>
+  <div class="links" id="links"></div>
+ </div></div></section>
+
+<section class="page" id="p-monitor"><div class="pad">
+ <div class="card"><div class="bar" style="justify-content:space-between"><h3 style="margin:0">Live fix monitor</h3>
+  <span class="bar"><button data-run="approve">1 · Approve plan</button><button data-run="apply2" class="go">2 · Apply fixes</button>
+  <button data-run="validate">3 · Validate (rescan)</button><button data-run="health">4 · Health check</button></span></div>
+  <p class="muted" style="margin:6px 0 10px">Each approved fix appears here the moment it is applied in the sandbox, then verified by the rescan and checked for breaking API changes. Updates every second.</p>
+  <div class="pipe" id="pipe"></div></div>
+ <div class="kpis" id="kpis"></div>
+ <div class="card"><h3>Approved fixes</h3><div style="overflow-x:auto"><table id="acts"></table></div></div>
+ <div class="wrap" style="padding:0;grid-template-columns:1fr 1fr">
+  <div class="card"><h3>Events</h3><div class="console mini" id="events"></div></div>
+  <div class="card"><h3>Live output</h3><div class="console mini" id="out2"></div></div></div>
+</div></section>
+
+<section class="page" id="p-health"><div class="pad">
+ <div class="card"><div class="bar" style="justify-content:space-between"><h3 style="margin:0">Is the fixed application still working?</h3>
+  <button data-run="health">Run health check</button></div>
+  <p class="muted" style="margin:6px 0 0">The rescan proves the vulnerabilities are gone (105 → 73 findings). This page checks the other side: did the upgrades break
+  the code that uses those packages? For every changed package it finds how the app's own source uses it, installs the old and the new
+  version (no install scripts run), loads both and checks that everything the app uses still exists.</p></div>
+ <div id="verdict"></div>
+ <div class="card"><h3>Checks</h3><ul class="layers" id="layers"></ul></div>
+ <div class="card"><h3>Changed packages</h3><div style="overflow-x:auto"><table id="pk"></table></div></div>
+ <div class="card"><h3>Live output</h3><div class="console mini" id="out3"></div></div>
+</div></section>
+
+<section class="page" id="p-diff"><iframe id="f-diff" title="Graph before vs after"></iframe></section>
+<section class="page" id="p-dash"><iframe id="f-dash" title="Dashboard"></iframe></section>
+<section class="page" id="p-report"><iframe id="f-report" title="Final report"></iframe></section>
+
 <script>
 const STEPS = [
  {g:"prep", t:"0 · Before you start", items:[
-  ["tests","Run the 45+ automated tests","offline, under a second","rules"],
+  ["tests","Run the automated tests","offline, under a second","rules"],
   ["llm_check","Check the AI providers","which AI answers (Groq / Gemini / Claude)","ai"]]},
  {g:"day1", t:"Day 1 · Eyes", items:[
-  ["scan","Scan","Discover + OSV + dynamic Trivy/Grype + supply-chain checks","rules", "target"],
+  ["scan","Scan","Discover + OSV + dynamic Trivy/Grype + supply-chain checks","rules","target"],
   ["simulate_pr","Simulate a malicious PR","copy of the repo with 4 planted changes","rules"],
   ["scan_pr","Scan the PR against the baseline","catches tampering, mirror, install script, downgrade","rules"]]},
  {g:"brain", t:"Day 2 · Brain (prioritization)", items:[
@@ -301,15 +372,16 @@ const STEPS = [
   ["apply","Apply without approval","clears the old approval, then shows the refusal","rules"],
   ["approve","Approve in the browser","opens the approval page (127.0.0.1:8770)","human"],
   ["killswitch","Kill switch","STOP file on / off","rules"],
-  ["apply2","Apply in the sandbox","sandbox branch, lockfiles --ignore-scripts, patch","rules"]]},
+  ["apply2","Apply in the sandbox","watch it live in the Live fix monitor tab","rules"]]},
  {g:"proof", t:"Test and rescan · Report", items:[
   ["validate","Validate","full rescan, before vs after, verdict + graph diff","rules"],
+  ["health","App health check","is the fixed app still working? (API compatibility)","rules"],
   ["diff","Graph before vs after","rebuild graph_diff.html","rules"],
   ["report","Final report","guardian_report.html","rules"],
   ["policy","Policy gate","CI gate (exit 1 = blocked)","rules"],
   ["backup","Backup results","zip of runs/ for the demo","rules"]]}];
-const $ = s => document.querySelector(s), esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-let state = {repos:[], targets:[], stop:{}}, since = 0, running = false, n = 0;
+const $ = s => document.querySelector(s), esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+let state = {repos:[], targets:[], stop:{}}, since = 0, running = false, n = 0, page = "steps", fullText = "";
 const tag = k => `<span class="tag ${k}">${k === "ai" ? "AI" : k === "human" ? "HUMAN" : "RULES"}</span>`;
 $("#steps").innerHTML = STEPS.map(G => `<div class="group ${G.g}"><h2>${G.t}</h2>` + G.items.map(([id, name, what, kind, extra]) =>
   `<div class="step" id="s-${id}"><span class="n">${++n}</span><div><b>${name}${tag(kind)}</b><small>${what}</small>
@@ -320,9 +392,10 @@ async function api(path, body) {
   const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : {});
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
 }
+const repo = () => $("#repo").value;
 async function refresh() {
   state = await api("/api/state");
-  const cur = $("#repo").value || "juice-shop";
+  const cur = repo() || "juice-shop";
   $("#repo").innerHTML = state.repos.map(r => `<option ${r === cur ? "selected" : ""}>${r}</option>`).join("") || "<option value=''>(scan first)</option>";
   const t = $("#target"), tv = t.value || "targets/juice-shop";
   t.innerHTML = state.targets.map(x => `<option value="${x.path}" ${x.path === tv ? "selected" : ""}>${x.label}</option>`).join("")
@@ -330,17 +403,31 @@ async function refresh() {
   links();
 }
 function links() {
-  const r = $("#repo").value; if (!r) return $("#links").innerHTML = "";
-  const L = [["Dashboard", "guardian.html"], ["Graph before vs after", "graph_diff.html"], ["Final report", "guardian_report.html"],
-    ["findings.json", "findings.json"], ["analysis.txt", "analysis.txt"], ["plan.txt", "plan.txt"], ["audit trail", "audit.jsonl"]];
+  const r = repo(); if (!r) return $("#links").innerHTML = "";
+  const L = [["findings.json", "findings.json"], ["analysis.txt", "analysis.txt"], ["plan.txt", "plan.txt"], ["remediation.patch", "remediation.patch"],
+             ["health.json", "health.json"], ["audit trail", "audit.jsonl"]];
   $("#links").innerHTML = L.map(([n, f]) => `<a href="/runs/${encodeURIComponent(r)}/${f}" target="_blank">${n}</a>`).join("")
-    + (r ? ` <a href="/runs/${encodeURIComponent(r)}-pr/guardian.html" target="_blank">PR dashboard</a>` : "")
+    + ` <a href="/runs/${encodeURIComponent(r)}-pr/guardian.html" target="_blank">PR dashboard</a>`
     + ` <span id="ks" class="${state.stop[r] ? "stop-on" : ""}">${state.stop[r] ? "kill switch ON" : ""}</span>`;
 }
-$("#repo").addEventListener("change", links);
+$("#repo").addEventListener("change", () => { links(); frames(true); monitor(); });
+function frames(force) {
+  const r = encodeURIComponent(repo()); if (!r) return;
+  [["#f-diff", "graph_diff.html"], ["#f-dash", "guardian.html"], ["#f-report", "guardian_report.html"]].forEach(([id, f]) => {
+    const want = `/runs/${r}/${f}`; const el = $(id);
+    if (force || el.dataset.src !== want) { el.dataset.src = want; if (page === id.slice(3) || force === "now") el.src = want + "?t=" + Date.now(); }
+  });
+}
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#tabs button,.page").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); page = b.dataset.p; $("#p-" + page).classList.add("on");
+  const fr = {diff: "#f-diff", dash: "#f-dash", report: "#f-report"}[page];
+  if (fr) $(fr).src = `/runs/${encodeURIComponent(repo())}/${{diff: "graph_diff.html", dash: "guardian.html", report: "guardian_report.html"}[page]}?t=` + Date.now();
+  if (page === "monitor" || page === "health") monitor();
+});
 function setRunning(v) {
   running = v;
-  document.querySelectorAll("[data-step],[data-k]").forEach(b => b.disabled = v);
+  document.querySelectorAll("[data-step],[data-k],[data-run]").forEach(b => b.disabled = v);
   ["#stopBtn", "#answer", "#sendBtn"].forEach(s => $(s).disabled = !v);
   document.querySelectorAll("[data-a]").forEach(b => b.disabled = !v);
 }
@@ -349,32 +436,34 @@ async function run(step) {
   let target = "";
   if (real === "scan") { target = $("#target").value;
     if (target === "url") { target = prompt("GitHub link, e.g. https://github.com/snyk-labs/nodejs-goof") || ""; if (!target) return; } }
-  if (step === "apply") { try { await api("/api/clear-approval", {repo: $("#repo").value}); } catch (e) {} }
-  try { await api("/api/run", {step: real, repo: real === "scan" ? "" : $("#repo").value, target, offline: $("#offline").checked}); }
+  if (step === "apply") { try { await api("/api/clear-approval", {repo: repo()}); } catch (e) {} }
+  try { await api("/api/run", {step: real, repo: real === "scan" ? "" : repo(), target, offline: $("#offline").checked}); }
   catch (e) { $("#out").textContent += `\n[not started: ${e.message}]\n`; return; }
-  document.querySelectorAll(".step").forEach(s => s.classList.remove("run"));
-  $("#s-" + step).classList.add("run"); $("#s-" + step).dataset.last = "1";
-  document.querySelectorAll(".step").forEach(s => { if (s.id !== "s-" + step) delete s.dataset.last; });
-  since = 0; $("#out").innerHTML = ""; $("#title").textContent = $("#s-" + step).querySelector("b").firstChild.textContent;
+  document.querySelectorAll(".step").forEach(s => { s.classList.remove("run"); delete s.dataset.last; });
+  const el = $("#s-" + step); if (el) { el.classList.add("run"); el.dataset.last = "1"; }
+  since = 0; fullText = ""; ["#out", "#out2", "#out3"].forEach(s => $(s).innerHTML = "");
+  $("#title").textContent = el ? el.querySelector("b").firstChild.textContent : step;
   setRunning(true); poll();
 }
+const linkify = t => esc(t).replace(/(https?:\/\/[^\s)'"]+)/g, '<a href="$1" target="_blank">$1</a>');
 async function poll() {
   const s = await api("/api/output?since=" + since); since = s.length;
-  if (s.text) { const o = $("#out"), bottom = o.scrollTop + o.clientHeight >= o.scrollHeight - 30;
-    o.innerHTML += esc(s.text).replace(/(https?:\/\/[^\s)'"]+)/g, '<a href="$1" target="_blank">$1</a>');
-    if (bottom) o.scrollTop = o.scrollHeight; }
+  if (s.text) { fullText += s.text;
+    for (const id of ["#out", "#out2", "#out3"]) { const o = $(id), bottom = o.scrollTop + o.clientHeight >= o.scrollHeight - 30;
+      o.innerHTML = linkify(fullText); if (bottom || id !== "#out") o.scrollTop = o.scrollHeight; } }
   $("#status").textContent = s.running ? "running…" : (s.code === null ? "" : s.code === 0 ? "finished" : "finished with exit code " + s.code);
   if (s.running) return setTimeout(poll, 400);
   setRunning(false);
   const el = document.querySelector('.step[data-last="1"]');
   if (el) { el.classList.remove("run"); el.classList.add(s.code === 0 ? "ok" : "bad"); }
-  refresh();
+  refresh(); frames(true); monitor();
 }
 document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.step) return run(b.dataset.step);
-  if (b.dataset.k !== undefined) { const r = await api("/api/killswitch", {repo: $("#repo").value, on: b.dataset.k === "1"});
-    $("#out").textContent = `Kill switch ${r.stop ? "ON: runs/" + $("#repo").value + "/STOP created - apply will refuse" : "OFF: STOP file removed"}\n`;
+  if (b.dataset.run) return run(b.dataset.run);
+  if (b.dataset.k !== undefined) { const r = await api("/api/killswitch", {repo: repo(), on: b.dataset.k === "1"});
+    $("#out").textContent = `Kill switch ${r.stop ? "ON: runs/" + repo() + "/STOP created - apply will refuse" : "OFF: STOP file removed"}\n`;
     $("#s-killswitch").classList.add("ok"); return refresh(); }
   if (b.dataset.a) return send(b.dataset.a);
   if (b.id === "sendBtn") return send($("#answer").value);
@@ -382,5 +471,65 @@ document.addEventListener("click", async e => {
 });
 async function send(t) { try { await api("/api/input", {text: t}); $("#answer").value = ""; } catch (e) {} }
 $("#answer").addEventListener("keydown", e => { if (e.key === "Enter") send($("#answer").value); });
-refresh();
+
+// ---------------- live fix monitor + health ----------------
+const ST = s => `<span class="st ${esc((s || "pending").split(" ")[0].replace(/[^a-z]/g, ""))}">${esc(s || "pending")}</span>`;
+const STAGES = [["approved", "Approved"], ["apply", "Applying fixes"], ["lockfiles", "Lockfiles"], ["applied", "Applied in sandbox"],
+                ["validating", "Rescanning"], ["validated", "Verified"], ["health", "Health check"], ["health_done", "Health verdict"]];
+async function monitor() {
+  if (!repo()) return;
+  let m; try { m = await api("/api/monitor?repo=" + encodeURIComponent(repo())); } catch (e) { return; }
+  const stage = (m.progress || {}).stage, idx = STAGES.findIndex(s => s[0] === stage);
+  const approvedNow = m.approval && m.plan && m.approval.plan_hash === m.plan.plan_hash;
+  const sameRun = approvedNow && (m.progress || {}).plan_hash === m.plan.plan_hash;   // progress belongs to this approval
+  $("#pipe").innerHTML = !approvedNow
+    ? STAGES.map(([k, l]) => `<span>${l}</span>`).join("") + ` <span class="now">waiting for a human approval of plan ${esc(((m.plan || {}).plan_hash || "").slice(0, 12))}</span>`
+    : STAGES.map(([k, l], i) => {
+      const done = k === "approved" || (sameRun && idx >= 0 && (i < idx || (i === idx && /applied|validated|health_done/.test(stage))));
+      const now = sameRun && idx === i && !done; return `<span class="${done ? "done" : now ? "now" : ""}">${done ? "✓ " : ""}${l}</span>`; }).join("");
+  const at = k => STAGES.findIndex(s => s[0] === k);
+  const showVerify = sameRun && idx >= at("validated"), showHealth = sameRun && idx >= at("health_done");
+  const v = showVerify ? (m.validation || {}) : {}, b = (v.before || {}).by_severity || {}, a = (v.after || {}).by_severity || {};
+  const prog = (m.progress || {}).actions || {};
+  const nApplied = Object.values(prog).filter(x => x.status === "applied").length, nAll = (m.approval || {}).approved_actions ? m.approval.approved_actions.length : 0;
+  $("#kpis").innerHTML = [[`${nApplied} / ${nAll || "-"}`, "fixes applied"],
+    [v.before ? `${b.critical} → ${a.critical}` : "–", "critical findings"], [v.before ? `${b.high} → ${a.high}` : "–", "high findings"],
+    [v.before ? `${v.before.findings} → ${v.after.findings}` : "–", "total findings"], [v.resolved ? v.resolved.length : "–", "resolved"],
+    [v.new_findings ? v.new_findings.length : "–", "new problems"], [v.verdict ? v.verdict.toUpperCase() : "–", "rescan verdict"],
+    [showHealth && m.health ? m.health.verdict.toUpperCase() : "–", "app health"]]
+    .map(([x, l]) => `<div class="kpi"><b>${esc(x)}</b><small>${l}</small></div>`).join("");
+  const per = showVerify ? Object.fromEntries((v.per_action || []).map(p => [p.id, p])) : {};
+  const hp = showHealth ? Object.fromEntries(((m.health || {}).packages || []).map(p => [p.action, p])) : {};
+  const appr = new Set(approvedNow ? m.approval.approved_actions : []);
+  $("#acts").innerHTML = "<tr><th>Fix</th><th>What</th><th>Risk</th><th>Approval</th><th>Applied in sandbox</th><th>Rescan (findings)</th><th>App health</th></tr>"
+    + ((m.plan || {}).actions || []).map(x => {
+      const p = x.params || {}, what = x.type === "npm_replace" ? `${p.package} → ${p.with}@${p.version}` : x.type === "escalate" ? `${(x.risk || "").split(":")[1] || ""} → human decision`
+        : `${p.package || ""} ${p.from || ""} → ${p.to || ""}`;
+      const pr = prog[x.id] || {}, pa = per[x.id], h = hp[x.id];
+      const verify = pa ? `${ST(pa.status.startsWith("n/a") ? "na" : pa.status)} ${pa.resolved}/${pa.targeted}` : "–";
+      return `<tr><td><b>${x.id}</b><br><span class="muted">${esc(x.type)}</span></td><td>${esc(what)}</td>
+        <td>${esc((x.risk || "").slice(0, 70))}<br><span class="muted">${esc(x.priority)} · ${esc(x.score)}</span></td>
+        <td>${appr.has(x.id) ? ST("approved") : "–"}</td><td>${appr.has(x.id) ? ST(pr.status) : "–"}<br><span class="muted">${esc(pr.detail || "")}</span></td>
+        <td>${verify}</td><td>${h ? ST(h.status === "not used directly by the app" ? "na" : h.status) + (h.status.startsWith("not used") ? " <span class='muted'>not used directly</span>" : "") : "–"}</td></tr>`; }).join("");
+  $("#events").textContent = ((m.progress || {}).events || []).join("\n") || "No fixes applied yet. Approve the plan, then press 'Apply fixes'.";
+  $("#events").scrollTop = $("#events").scrollHeight;
+  // health page
+  const H = m.health;
+  if (!H) { $("#verdict").innerHTML = `<div class="verdict v-unknown">Not checked yet - press "Run health check" (after Apply)</div>`;
+    $("#layers").innerHTML = ""; $("#pk").innerHTML = ""; return; }
+  const cls = H.verdict.startsWith("working") ? "v-working" : H.verdict.startsWith("needs") ? "v-needs" : "v-unknown";
+  $("#verdict").innerHTML = `<div class="verdict ${cls}">${H.verdict === "needs code changes" ? "✗ Needs code changes" : H.verdict.startsWith("working") ? "✓ " + esc(H.verdict) : esc(H.verdict)}
+    ${H.breaking_usages ? `<span style="font-weight:400;font-size:15px"> - ${H.breaking_usages} place(s) in the app must be updated before merging</span>` : ""}</div>`;
+  $("#layers").innerHTML = `<li>${H.lockfiles_ok ? "✅" : "❌"} <b>Lockfiles resolve</b> - ${H.lockfiles.length} changed manifest(s), resolved without running package scripts</li>
+    <li>${H.breaking_usages ? "❌" : "✅"} <b>API compatibility</b> - every function the app uses from a changed package still exists in the new version</li>
+    <li>${H.tests ? (H.tests.ok ? "✅" : "❌") : "➖"} <b>Application tests</b> - ${H.tests ? esc(H.tests.cmd) : "not run (python -m guardian health &lt;repo&gt; --test-cmd \"npm test\")"}</li>
+    <li class="muted">Limits: ${esc(H.limits)}</li>`;
+  $("#pk").innerHTML = "<tr><th>Fix</th><th>Package</th><th>Status</th><th>How the app uses it (file:line)</th></tr>"
+    + H.packages.map(p => `<tr><td><b>${esc(p.action)}</b></td><td>${esc(p.old_pkg !== p.new_pkg ? p.old_pkg + " " + p.old + " → " + p.new_pkg + " " + p.new : p.new_pkg + " " + p.old + " → " + p.new)}</td>
+      <td>${ST(p.status === "not used directly by the app" ? "na" : p.status)}${p.status.startsWith("not used") ? "<br><span class='muted'>not used directly by the app</span>" : ""}</td>
+      <td>${p.checks.length ? p.checks.map(c => `${ST(c.state)} <b>${esc(c.name)}</b> <span class="muted">${esc(c.where)}</span><span class="code">${esc(c.code)}</span>`).join("")
+        : "<span class='muted'>no direct import in the app's source</span>"}</td></tr>`).join("");
+}
+setInterval(() => { if (page === "monitor" || page === "health") monitor(); }, 1000);
+refresh().then(() => { frames(); monitor(); });
 </script></body></html>"""
