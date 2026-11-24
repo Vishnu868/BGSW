@@ -531,5 +531,7 @@ async function monitor() {
         : "<span class='muted'>no direct import in the app's source</span>"}</td></tr>`).join("");
 }
 setInterval(() => { if (page === "monitor" || page === "health") monitor(); }, 1000);
-refresh().then(() => { frames(); monitor(); });
+refresh().then(() => { frames(); monitor();
+  const want = location.hash.slice(1);                     // e.g. http://127.0.0.1:8780/#monitor opens that tab
+  if (want) { const b = document.querySelector(`#tabs [data-p="${want}"]`); if (b) b.click(); } });
 </script></body></html>"""
