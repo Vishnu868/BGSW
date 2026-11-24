@@ -7,7 +7,8 @@ Day 2 (Brain & Shield)  analyze   <repo>             5 agents + symbolic verifie
                         plan      <repo>             safe remediation plan (allow-listed actions only)
                         approve   <repo> [--web]     human approval bound to the plan hash
                         apply     <repo>             apply approved actions in a sandbox branch (+ patch)
-                        validate  <repo>             build/test/rescan, before-vs-after verdict
+                        validate  <repo>             build/test/rescan, before-vs-after verdict (+ graph_diff.html)
+                        diff      <repo>             visual dependency graph before vs after the fixes
                         report    <repo>             final Guardian report (JSON + MD + HTML)
                         run       <folder|git-url>   everything above in order (approval still interactive)
 Extras                  policy    <repo>             policy-as-code gate (exit 1 on violation)
@@ -69,6 +70,8 @@ def main(argv=None) -> int:
     v.add_argument("repo")
     v.add_argument("--install", action="store_true", help="also run npm ci --ignore-scripts (slow)")
     v.add_argument("--test-cmd", default="", help='e.g. "npm test" (run inside the sandbox)')
+    df = sub.add_parser("diff")
+    df.add_argument("repo")
     r = sub.add_parser("report")
     r.add_argument("repo")
     po = sub.add_parser("policy")
@@ -119,6 +122,9 @@ def main(argv=None) -> int:
     elif args.cmd == "validate":
         from . import validate
         validate.run(_dir(args.repo), install=args.install, test_cmd=args.test_cmd)
+    elif args.cmd == "diff":
+        from .report import diff
+        diff.write(_dir(args.repo))
     elif args.cmd == "report":
         from .report import final
         final.build(_dir(args.repo))

@@ -119,6 +119,11 @@ def run(run_dir: Path, install: bool = False, test_cmd: str = "", timeout: int =
     log(f"[validate] verdict: {verdict.upper()} - resolved {len(resolved)} findings, {len(new)} new, "
         f"critical {res['before']['by_severity']['critical']} -> {res['after']['by_severity']['critical']}, "
         f"high {res['before']['by_severity']['high']} -> {res['after']['by_severity']['high']}")
+    try:                                   # visual before-vs-after dependency graph (never fails the validation)
+        from ..report import diff
+        diff.write(run_dir, log=log)
+    except Exception as e:  # noqa: BLE001
+        log(f"[diff] graph comparison skipped: {e}")
     return res
 
 

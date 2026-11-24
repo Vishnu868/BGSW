@@ -28,6 +28,9 @@ def _post(url: str, body: dict, headers: dict, timeout: int = 120, retries: int 
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:300]
+            # a used-up daily/plan quota will not come back in a minute: fail at once so the router moves on
+            if e.code == 429 and any(s in detail.lower() for s in ("exceeded your current quota", "per day", "billing")):
+                raise ProviderError(f"HTTP 429 quota exhausted: {detail[:160]}") from None
             if e.code in (429, 500, 502, 503) and attempt < retries:     # free tiers rate-limit: back off briefly
                 wait = float(e.headers.get("retry-after") or 0) or 2 * (attempt + 1)
                 time.sleep(min(wait + 1, 60))       # per-minute token limits reset within a minute

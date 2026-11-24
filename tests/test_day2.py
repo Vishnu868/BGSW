@@ -286,3 +286,49 @@ class ReplacementVersionTest(unittest.TestCase):
         out, notes, status = self._run("9.9.9")
         self.assertIsNone(out["target_version"])
         self.assertIn("hallucination blocked", notes[0])
+
+
+class GraphDiffTest(unittest.TestCase):
+    """Before vs after graph: packages matched by name; fixed / upgraded / removed / added / replaced / remaining."""
+
+    def test_statuses(self):
+        from guardian.report import diff
+        d = Path(tempfile.mkdtemp())
+
+        def node(name, ver, kind="library"):
+            return {"id": f"npm:{name}@{ver}", "name": name, "version": ver, "kind": kind, "eco": "npm",
+                    "direct": name in ("jwt", "fake"), "dev": False, "path": ["app:p", f"npm:{name}@{ver}"]}
+
+        def finding(name, ver, title, rule="osv"):
+            return {"component": f"npm:{name}@{ver}", "severity": "high", "title": title, "category": "1.1", "rule": rule}
+
+        app = {"id": "app:p", "name": "p", "version": "", "kind": "application", "path": ["app:p"]}
+        before = {"meta": {"repo": "x"}, "roots": ["app:p"],
+                  "nodes": [app, node("jwt", "0.4.0"), node("jws", "0.2.6"), node("ms", "1.0.0"), node("fake", "1.0.0"),
+                            node("old", "1.0.0"), node("bad", "1.0.0")],
+                  "edges": [["app:p", "npm:jwt@0.4.0"], ["npm:jwt@0.4.0", "npm:jws@0.2.6"], ["app:p", "npm:fake@1.0.0"]],
+                  "findings": [finding("jwt", "0.4.0", "CVE-1: jwt"), finding("jws", "0.2.6", "CVE-2: jws"),
+                               finding("fake", "1.0.0", "Typosquat"), finding("bad", "1.0.0", "CVE-3: bad")]}
+        after = {"meta": {"repo": "x"}, "roots": ["app:p"],
+                 "nodes": [app, node("jwt", "9.0.3"), node("ms", "2.0.0"), node("real", "1.0.0"), node("bad", "1.0.0"),
+                           node("newdep", "1.0.0")],
+                 "edges": [["app:p", "npm:jwt@9.0.3"], ["npm:jwt@9.0.3", "npm:newdep@1.0.0"], ["app:p", "npm:real@1.0.0"]],
+                 "findings": [finding("bad", "1.0.0", "CVE-3: bad"),
+                              finding("real", "1.0.0", "New direct dependency since baseline", rule="diff.added")]}
+        (d / "after" / "x").mkdir(parents=True)
+        (d / "graph_data.json").write_text(json.dumps(before), encoding="utf-8")
+        (d / "after" / "x" / "graph_data.json").write_text(json.dumps(after), encoding="utf-8")
+        (d / "plan.json").write_text(json.dumps({"actions": [
+            {"id": "A-01", "type": "npm_upgrade_direct", "params": {"package": "jwt", "from": "0.4.0", "to": "9.0.3"}},
+            {"id": "A-02", "type": "npm_replace", "params": {"package": "fake", "with": "real", "version": "1.0.0"}}]}),
+            encoding="utf-8")
+        st = {n["name"]: n["status"] for n in diff.build(d)["nodes"]}
+        self.assertEqual(st["jwt"], "fixed")          # vulnerable before, clean after (A-01)
+        self.assertEqual(st["jws"], "fixed")          # dropped together with the old jwt
+        self.assertEqual(st["ms"], "upgraded")
+        self.assertEqual(st["fake"], "replaced")      # typosquat -> genuine (A-02)
+        self.assertEqual(st["real"], "added")         # the change note diff.added is not a new problem
+        self.assertEqual(st["bad"], "remaining")
+        self.assertEqual(st["old"], "removed")
+        self.assertEqual(st["newdep"], "added")
+        self.assertTrue(diff.write(d, log=lambda *_: None).exists())
