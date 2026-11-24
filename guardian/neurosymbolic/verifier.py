@@ -52,6 +52,21 @@ def specialist(out: dict, evidence: dict, item: dict, facts) -> tuple[dict, list
     tv = out.get("target_version")
     if tv in ("null", "", "None", None):
         out["target_version"] = None
+    elif out["recommended_action"] == "replace":
+        # the version belongs to the REPLACEMENT package (typosquat -> genuine), not to the flagged one: check it
+        # against the other packages this agent looked up in its own evidence (e.g. ngy-cookie -> ngx-cookie)
+        cd = item.get("component") or {}
+        eco = cd.get("ecosystem", "") or "npm"
+        others = sorted({str((e.get("args") or {}).get(k)) for e in evidence.values() if isinstance(e, dict)
+                         for k in ("package", "other") if (e.get("args") or {}).get(k)} - {cd.get("name", ""), "None"})
+        found = [o for o in others if (facts.versions(o, eco) or []) and str(tv) in facts.versions(o, eco)]
+        if found:
+            pass                         # real version of the genuine package: accepted without a note
+        elif others:
+            notes.append(f"replacement version {tv} not found for {', '.join(others)} -> removed (hallucination blocked)")
+            out["target_version"], conf, status = None, min(conf, 0.5), "corrected"
+        else:
+            notes.append(f"replacement package not identified in the evidence; version {tv} is checked again by the planner")
     else:
         cd = item.get("component") or {}
         ok, why = rules.version_ok(str(tv), item.get("max_fixed") or "", facts.versions(cd.get("name", ""), cd.get("ecosystem", "")))

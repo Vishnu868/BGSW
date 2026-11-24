@@ -256,3 +256,33 @@ class ClosingAnswerTest(unittest.TestCase):
         r = self.Script([{"verdict": "false_positive", "evidence_refs": ["E1"]}])
         out = self._agent().run(r, {"id": "R-1"}, self.Box(), "R-1")
         self.assertEqual(out["output"], {"verdict": "false_positive", "evidence_refs": ["E1"]})
+
+
+class ReplacementVersionTest(unittest.TestCase):
+    """A typosquat verdict's target version belongs to the genuine package, not to the fake one."""
+
+    class F:
+        V = {"ngy-cookie": ["6.0.1000"], "ngx-cookie": ["6.0.0", "6.0.1"]}
+
+        def versions(self, p, eco="npm"):
+            return self.V.get(p)
+
+        def file_line_exists(self, ref):
+            return True
+
+    def _run(self, tv, looked_up="ngx-cookie"):
+        from guardian.neurosymbolic import verifier
+        ev = {"E1": {"tool": "case"}, "E2": {"tool": "registry_versions", "args": {"package": looked_up}}}
+        out = {"verdict": "confirmed_risk", "exploitable_in_context": "yes", "recommended_action": "replace",
+               "target_version": tv, "confidence": 0.9, "evidence_refs": ["E1", "E2"], "reasoning": "typosquat"}
+        item = {"component": {"name": "ngy-cookie", "ecosystem": "npm"}, "max_fixed": ""}
+        return verifier.specialist(out, ev, item, self.F())
+
+    def test_real_replacement_version_accepted(self):
+        out, notes, status = self._run("6.0.1")
+        self.assertEqual((out["target_version"], status, notes), ("6.0.1", "accepted", []))
+
+    def test_invented_replacement_version_blocked(self):
+        out, notes, status = self._run("9.9.9")
+        self.assertIsNone(out["target_version"])
+        self.assertIn("hallucination blocked", notes[0])
