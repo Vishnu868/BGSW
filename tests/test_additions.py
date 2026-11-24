@@ -51,7 +51,7 @@ class ScannerTests(unittest.TestCase):
         grype = [{"scanner": "grype", "id": "GHSA-c7hr-j4mj-j2w6", "aliases": ["CVE-2015-9235"], "eco": "npm", "name": "jsonwebtoken",
                   "version": "0.4.0", "purl": "", "severity": "critical", "fixed": "4.2.2", "file": "", "title": ""}]
         with mock.patch.object(scanners, "run_trivy", return_value=(trivy, "ok (3 results)")), \
-             mock.patch.object(scanners, "run_grype", return_value=(grype, "ok (1 results)")):
+             mock.patch.object(scanners, "run_grype", return_value=(grype, "ok (1 results)")),              mock.patch.object(scanners, "binary", return_value="installed"):   # independent of tools/ on this machine
             new, status = scanners.scan(g, Path("."), [f], "repo:x", Path(tempfile.mkdtemp()), log=lambda *_: None)
         self.assertEqual(f.data["scanners"], ["grype", "osv", "trivy"])          # by id, by alias
         self.assertEqual(len([e for e in f.evidence if e["source"] == "Trivy"]), 1)  # NSWG duplicate merged, not new
