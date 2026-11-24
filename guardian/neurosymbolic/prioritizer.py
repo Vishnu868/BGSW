@@ -442,12 +442,17 @@ def explain(x: dict, res: dict) -> tuple[list[str], str]:
     lines += [f"Gate {g['gate']} ({g['priority']}): {g['reason']}{'' if g['changed'] else ' (already satisfied)'}." for g in res["gates"]]
     lines += [f"Flag: {f}." for f in res["flags"]]
     changed = [g for g in res["gates"] if g["changed"]]
-    drivers = sorted(dims.items(), key=lambda kv: -kv[1]["contribution"])[:2]
-    because = (f"gate {changed[-1]['gate']}: {changed[-1]['reason']}" if changed else
-               " and ".join(f"{TITLE[k].split(' (')[0].lower()} {v['score']:g} ({v['reasons'][0]})" for k, v in drivers))
     move = ("unchanged at" if res["priority"] == res["previous"]["priority"] else
             "raised to" if res["priority"] < res["previous"]["priority"] else "lowered to")
-    return lines, f"{move} {res['priority']} mainly because of {because}."
+    # raised / unchanged: name what pushes it up; lowered: name what holds it back
+    lowered = move == "lowered to"
+    picked = sorted(dims.items(), key=lambda kv: kv[1]["score"] if lowered else -kv[1]["contribution"])[:2]
+    named = " and ".join(f"{TITLE[k].split(' (')[0].lower()} {v['score']:g} ({v['reasons'][0]})" for k, v in picked)
+    if changed:
+        return lines, f"{move} {res['priority']} mainly because of gate {changed[-1]['gate']}: {changed[-1]['reason']}."
+    if lowered:
+        return lines, f"{move} {res['priority']}: held back by {named}."
+    return lines, f"{move} {res['priority']} mainly because of {named}."
 
 
 def run(items: list[dict], doc: dict, intel: dict, ctx: dict, cases: dict, review: dict | None = None,

@@ -106,6 +106,11 @@ class Decisions(unittest.TestCase):
         self.assertTrue(echoed["needs_review"])
         self.assertEqual(confirmed["priority"], "P1")                    # model + verifier confirmed it -> compromise
 
+    def test_lowered_items_name_what_holds_them_back(self):
+        r = P.assess(facts(reachability="via-unused-parent", business=copy.deepcopy(INTERNAL), epss=0.001,
+                           agent_priority="P1", agent_score=83), R)
+        self.assertTrue(r["why"].startswith(f"lowered to {r['priority']}: held back by production use 20"), r["why"])
+
     def test_dev_only_unreachable_is_capped(self):
         r = P.assess(facts(dev_only=True, reachability="not-imported", agent_priority="P2"), R)
         self.assertEqual(r["priority"], "P4")

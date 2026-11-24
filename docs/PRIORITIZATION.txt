@@ -1,0 +1,242 @@
+HOW THE GUARDIAN PRIORITIZES VULNERABILITIES
+============================================
+
+Every finding goes through four stages. Each stage keeps the previous result, so the final report shows how a
+risk got its priority.
+
+  1. Technical score        analyze/prioritize.py            facts only, no AI
+  2. Business bonus         analyze/business.py               SSVC-style, from business facts
+  3. Agent triage           agents/orchestrator.py            the Lead may move the score by at most +/-20
+  4. Final priority         neurosymbolic/prioritizer.py      agent 6: five dimensions, gates, confidence
+                            config/neurosymbolic_rules.json
+
+Priority bands (one definition for the whole system, neurosymbolic/rules.py):
+
+  P1  score >= 80   fix now
+  P2  60 - 79       fix this sprint
+  P3  35 - 59       plan
+  P4  below 35      accept / monitor
+
+
+STEP 0 - FROM FINDINGS TO RISK ITEMS
+------------------------------------
+All findings on the same package version become ONE risk item (e.g. three CVEs in lodash 4.17.4).
+The item is scored by its worst finding. Findings in a Dockerfile or workflow line, which have no package,
+are one item each.
+
+
+STEP 1 - TECHNICAL SCORE (0-100)
+--------------------------------
+Every point has a written reason.
+
+  base          CVSS x 10, or by severity when there is no CVSS:
+                critical 90, high 70, medium 45, low 20, info 5
+  exploitation  on the CISA Known Exploited Vulnerabilities list (KEV)          +15
+                EPSS >= 0.5 (exploitation likely)                               +10
+                EPSS >= 0.1 (exploitation possible)                             +5
+                EPSS <  0.01 (exploitation unlikely)                            -5
+  supply chain  typosquat / malicious / tampered lockfile / risky install script +10
+  exposure      dev-only (never shipped to production)                          -25
+                (except compromise indicators: they run on developer and CI machines anyway)
+  reachability  imported by application code                                    +5
+                direct dependency never imported                                -10
+                only reachable through unused dependencies                      -15
+  directness    direct dependency (the app chose it; one edit fixes it)          +5
+
+Ties at 100 are broken by: uncapped score, KEV, imported by the app, CVSS, headline.
+
+
+STEP 2 - BUSINESS BONUS (SSVC-STYLE)
+------------------------------------
+From the Business Context facts of the project the package belongs to (config/business_rules.json).
+The first matching row wins:
+
+  exploited (KEV), and exposure open or controlled                     Act     +15
+  exploited (KEV)                                                      Attend  +8
+  EPSS >= 0.1 + internet-facing + credentials or payment data          Act     +15
+  remote/no login/no user action + internet-facing + cred./payment     Attend  +8
+  internet-facing + credentials or payment data                        Track*  +3
+  dev-only, or anything else                                           Track   0
+
+  exposure: open = internet-facing project and the package is loaded; small = dev-only; else controlled
+
+
+STEP 3 - AGENT TRIAGE
+---------------------
+The top 6 items, plus up to 3 high/critical supply-chain items, are investigated by the agents (see AGENTS.md).
+The Lead may move each case's score by at most +/-20 points, and must give a reason. The verifier enforces both.
+Without an LLM: -20 if every specialist says false positive, +5 if one says exploitable here.
+
+
+STEP 4 - FINAL PRIORITY (NEUROSYMBOLIC PRIORITIZER, AGENT 6)
+------------------------------------------------------------
+Every item (not only the investigated ones) is scored on five dimensions, each 0-100 with reasons.
+The weighted sum is the score.
+
+  Dimension                                       Weight
+  1. Threat (severity x exploitability x exposure)  30%
+  2. Production use                                 20%
+  3. Business loss                                  25%
+  4. Supply-chain integrity                         15%   only when the item has a supply-chain signal;
+                                                          otherwise the other weights are rescaled to 100%
+  5. Blast radius                                   10%
+
+1. THREAT = 40% severity + 35% exploitability + 25% exposure
+   severity        CVSS x 10, or critical 95 / high 75 / medium 50 / low 25 / info 5
+   exploitability  the highest that applies:
+                     malicious or tampered artifact                       100
+                     on CISA KEV                                          100
+                     EPSS >= 0.5                                          90
+                     CI script injection / pull_request_target checkout   85
+                     Vulnerability Analyst: exploitable in this app       75
+                     EPSS >= 0.1                                          70
+                     install script (runs on every install)               70
+                     remote, no login, no user action (CVSS vector)       60
+                     nothing known                                        40
+                   then: EPSS < 0.01 (and none of KEV / analyst-yes / compromise)   -> 15
+                         Vulnerability Analyst: NOT exploitable here (not on KEV)   -> at most 30
+   exposure        internet-facing project and the package is loaded    100
+                   CI pipeline (holds repository secrets)                70
+                   container image                     60 (100 if the service is internet-facing)
+                   internet-facing, package not loaded                   50
+                   internal service, package loaded                      50
+                   unknown                                               40
+                   dev-only                                              15
+
+2. PRODUCTION USE
+   container base image                                                 90
+   imported by application code                                         100
+   loaded through a dependency the app uses                             85
+   install script in a production dependency                            80
+   installed in production, for artifact risks (look-alike, starjacking,
+     tampered hash, untrusted registry, git or http source): harm happens
+     at install time, so an import is not needed                        80
+   CI pipeline                                                          70
+   reachability unknown                                                 60
+   dev-only, but its install script runs on dev machines and CI         50
+   only used by build/test scripts                                      40
+   declared but never imported                                          25
+   only through unused dependencies                                     20
+   dev-only                                                             10
+   Vulnerability Analyst confirms it is exploitable here                +10
+   both specialists say likely false positive                           -30
+
+3. BUSINESS LOSS = the worst plausible loss, from the data the project handles (Business Context facts)
+   and what the flaw breaks (CVSS C/I/A)
+                                payment  credentials  personal  auth tokens  none
+   data breach (C:H)              100        95          80         75        35
+   fraud / tampering (I:H)        100        85          60         80        40
+   (C:L and I:L count at 60%)
+   outage (A:H)                   customer-facing service 70, internal service 35
+   full compromise                100  (malicious or tampered artifact, CI injection)
+   no CVSS vector                 data-breach value x 0.8 x (severity / 100)
+                                  so a low-severity misconfiguration cannot claim a catastrophic loss
+   Loss classes:
+     90+   catastrophic  card or credential data exposed or altered: fines (PCI DSS, GDPR), card reissue,
+                         fraud losses, mandatory breach notification
+     75+   severe        personal data or sessions exposed: regulatory reporting, customer notification
+     55+   significant   customer-facing outage or data integrity loss: lost revenue, SLA credits
+     35+   moderate      internal impact: engineering time, delayed releases
+     <35   minor         no sensitive data and no customer impact found
+
+4. SUPPLY-CHAIN INTEGRITY (is the artifact what it claims to be?), highest match wins
+   known malicious (MAL- advisory) 100, hash changed since last scan 95, starjacking 90,
+   CI script injection 85, untrusted registry 80, pull_request_target checkout 75, install script added 75,
+   insecure (http) URL 75, curl | sh in Dockerfile 70, look-alike name 65, git source 60, downgrade 60,
+   install script 60 (25 if allow-listed in policy.json), unpinned action 55, integrity conflict 55,
+   EOL image 50, unpinned image 45, ... (full table in config/neurosymbolic_rules.json)
+   Forensics confirms it +10; Forensics says false positive -30 (never for MAL- packages)
+
+5. BLAST RADIUS
+   repository-wide (CI action, container image, Dockerfile/workflow line)      90
+   pulled in by 4+ direct dependencies 80, by 2-3 60, by 1 40; direct dependency 50
+   3+ findings on the same package +10; used by more than one project +10
+
+ADJUSTMENTS
+   Lead triage move (Step 3) counts at half strength, at most +/-10 points.
+
+HARD GATES (applied after the weighted score, in this order)
+   human dismissed it in `guardian review`          -> P4 (score <= 20)        final
+   confirmed compromise: MAL- advisory, tampered hash, starjacking, or a look-alike the Forensics
+     agent confirmed                                -> P1 (score >= 95), action: block     final
+   on KEV + loaded in production + internet-facing  -> at least P1 (>= 85)
+   payment/credential data + CVSS >= 7 + high confidentiality impact + internet-facing + loaded
+                                                    -> at least P2 (>= 65)
+   human confirmed it in `guardian review`          -> at least P2 (>= 65)
+   unconfirmed look-alike package name              -> at least P2 (>= 65) + human review
+   both specialists say false positive, critic did not object  -> at most P3 (<= 55)
+   dev-only + never loaded + no supply-chain signal -> at most P4 (<= 30)
+   ("final" gates stop the rest; otherwise a later gate can lower what an earlier one raised.)
+
+CONFIDENCE (0.05 - 0.99): how much of the score rests on facts rather than assumptions
+   each dimension's confidence comes from the sources behind it (averaged where it combines several):
+     verified scan / public data 0.95, human-confirmed 1.0, pattern rules 0.75,
+     verified agent answer = the agent's own confidence, import-level reachability 0.85, unknown 0.4
+   overall = weighted average, then: critic disagrees -0.2, critic agrees +0.05,
+     the specialists disagree -0.1, 2+ scanners found it +0.05; a human decision sets 0.99
+   high >= 0.75, medium >= 0.55, low below
+   A P1/P2 with low confidence goes to the human review queue.
+
+EVIDENCE RULE
+   An agent's verdict counts only if a model produced it, the verifier accepted it and its confidence is
+   >= 0.6. Without an API key the agents' rule fallbacks only restate the scan, so they are never counted twice.
+
+
+WORKED EXAMPLE - minimist 0.0.8, fixtures/supply-chain-lab (no API key)
+-----------------------------------------------------------------------
+CVE-2021-44906, prototype pollution, CVSS 9.8. Transitive, only through an unused dependency, but downloaded
+from an untrusted registry. The project is internet-facing and handles payment, credential and personal data
+(src/server.js).
+
+  Step 1  base: CVSS 9.8                                   +98
+          only reachable through unused dependencies       -15
+          technical score                                  83   -> P1
+  Step 2  SSVC Track (not exploited, package not loaded)    +0
+  Step 3  agents (rule fallbacks) keep                     83   -> P1
+  Step 4
+    Threat        72.7 = 0.40 x 98 (CVSS) + 0.35 x 60 (remote, no login) + 0.25 x 50 (not loaded)
+                  x 30%  = 21.8
+    Business loss 100  (data exposure of payment data, catastrophic)                  x 25% = 25.0
+    Production    80   (installed in every production build: untrusted registry)      x 20% = 16.0
+    Supply chain  80   (lockfile.untrusted-registry)                                  x 15% = 12.0
+    Blast radius  50   (1 direct dependency, 4 findings +10)                          x 10% =  5.0
+                                                                                     score   79.8
+    No gate fires.                                                          -> P2, confidence 0.96 (high)
+    Why: "lowered to P2: held back by blast radius 50 (pulled in by 1 direct dependency) and threat 72.7
+    (CVSS 9.8)."
+
+The CVSS alone says critical. The prioritizer still treats it as serious because the package arrives from an
+untrusted registry into a service that holds card data, but it stays out of "fix now": the app never loads the
+vulnerable code, and nothing shows it being exploited.
+
+
+ALL RESULTS ON THE SAME FIXTURE (no API key)
+--------------------------------------------
+  Risk                                                technical  agents  final       confidence
+  lodash CVE-2019-10744, imported                     P1 100     P1 100  P1 90.3     0.93 high
+  CI script injection from untrusted event data       P2 70      P2 70   P1 84.0     0.85 high
+  pull_request_target checks out untrusted PR code    P2 70      P2 70   P1 82.4     0.85 high
+  minimist CVE-2021-44906 (above)                     P1 83      P1 83   P2 79.8     0.96 high
+  remote script piped into a shell (Dockerfile)       P2 70      P2 70   P2 73.2     0.78 high
+  node:latest floating image tag                      P2 70      P2 70   P2 69.5     0.78 high
+  express CVE-2024-29041 open redirect, imported      P2 69      P2 69   P2 66.3     0.88 high
+  crossenv look-alike name (unconfirmed)              P2 75      P2 75   P2 65 +review 0.78 high
+  tj-actions/changed-files on a mutable tag           P2 70      P2 70   P2 64.6     0.80 high
+  final image runs as root                            P3 45      P3 45   P3 59.9     0.78 high
+  actions/checkout on a mutable tag                   P3 45      P3 45   P3 56.6     0.80 high
+  install script in telemetry-helper-demo             P4 15      P4 15   P3 49.1     0.84 high
+  no top-level token permissions in a workflow        P4 20      P4 20   P3 47.2     0.80 high
+
+All confidences are high here because, with no API key, almost every input is a deterministic fact. With a
+model, agent confidence and Critic disagreements spread them out.
+
+
+CHANGING THE RULES
+------------------
+  config/neurosymbolic_rules.json   weights, tables, gates, confidence (agent 6)
+  config/business_rules.json        SSVC decision table and bonus points (step 2)
+  analyze/prioritize.py             technical score (step 1)
+  neurosymbolic/rules.py            priority bands, +/-20 limit, review threshold
+
+neurosymbolic_rules.json is validated on load: the weights must sum to 1, and each gate's score must sit
+inside its priority band. Every change is visible in a pull request.
