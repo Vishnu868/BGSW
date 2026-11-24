@@ -54,8 +54,9 @@ class Agent:
                 result["error"] = "; ".join(meta.get("errors", []))[:300] or "LLM unavailable"
                 break
             result["provider"] = f"{meta['provider']}:{meta['model']}"
-            if isinstance(msg.get("final"), (dict, list)):
-                result["output"], result["evidence"] = msg["final"], evidence
+            final = _as_final(msg)
+            if final is not None:
+                result["output"], result["evidence"] = final, evidence
                 return result
             name = str(msg.get("tool", ""))
             args = msg.get("args") if isinstance(msg.get("args"), dict) else {}
@@ -70,5 +71,34 @@ class Agent:
                               f"{eid} = {json.dumps(res, default=str)[:3000]}")
         result["evidence"] = evidence
         if not result["error"]:
+            # Steps used up (weaker models keep asking for tools): one closing call that offers no tools at all,
+            # so the agent must decide from the evidence it already gathered. The verifier still checks the answer.
+            closing = (f"You are the {self.title} of a Software Supply Chain Guardian (a multi-agent system).\n{self.mission}\n\n"
+                       f"Required final format:\n{self.output_format}\n\nYou have no tools left. Reply with exactly ONE JSON "
+                       'object {"final": <your answer in the required format>}, citing evidence ids (E1, E2, ...) '
+                       "from the transcript. If the evidence is insufficient, say so and lower your confidence.")
+            msg, meta = router.ask_json(closing, "\n\n".join(transcript)[-14000:] + "\n\nGive your final answer now.",
+                                        purpose=f"{self.name}: {purpose} (closing)")
+            final = _as_final(msg) if msg is not None else None
+            if final is not None:
+                result["provider"] = f"{meta['provider']}:{meta['model']}"
+                result["output"] = final
+                result["steps"].append({"step": len(result["steps"]) + 1, "tool": "(closing answer)", "args": {},
+                                        "why": "step limit reached: answered from the evidence gathered", "evidence_id": ""})
+                return result
             result["error"] = "no final answer within the step limit"
         return result
+
+
+def _as_final(msg) -> dict | list | None:
+    """Accept the final answer in the shapes models actually send: {"final": {...}}, a tool call named "final",
+    or the answer object itself without the wrapper (no "tool" key)."""
+    if not isinstance(msg, dict):
+        return None
+    if isinstance(msg.get("final"), (dict, list)):
+        return msg["final"]
+    if str(msg.get("tool", "")).lower() in ("final", "final_answer", "answer") and isinstance(msg.get("args"), dict):
+        return msg["args"]
+    if "tool" not in msg and msg and not set(msg) <= {"why", "args"}:
+        return msg
+    return None

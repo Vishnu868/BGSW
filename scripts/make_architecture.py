@@ -59,7 +59,7 @@ def build() -> str:
     band(96, 262, "DAY 1 · EYES", "python -m guardian scan <repo>  →  what is in the app, what changed, what is risky")
     box(50, 134, 200, 210, "data", "Any repository", ["local folder or git URL", "read-only clone", "", "missing npm lockfile?", "generated with", "--ignore-scripts", "(no package code runs)"], tag=False)
     box(290, 134, 360, 210, "engine", "1 · DISCOVER", ["find manifests · lockfiles ·", "Dockerfiles · CI workflows", "adapters: npm lockfile v1–v3 ·", "Python · Maven · Go · Ruby · PHP · C#", "deps.dev fills lockfile-less trees", "!→ dependency graph + paths"])
-    box(690, 134, 420, 210, "engine", "2 · DETECT", ["osv.py        1.1/1.2 CVEs · CVSS · fixed version", "scanners.py   Trivy + Grype cross-check (N of M)", "packages.py   1.3 typosquat · 1.4 install scripts", "lockfile.py   1.6 tamper · registry · diff", "container.py 1.5 images · cicd.py 1.7 actions", "!every finding carries evidence"])
+    box(690, 134, 420, 210, "engine", "2 · DETECT", ["osv.py        1.1/1.2 CVEs · CVSS · fixed version", "scanners.py   dynamic plan → Trivy/Grype only where needed", "packages.py   1.3 typosquat · 1.4 install scripts", "lockfile.py   1.6 tamper · registry · diff", "container.py 1.5 images · cicd.py 1.7 actions", "!every finding carries evidence"])
     box(1150, 134, 300, 210, "data", "Day 1 outputs", ["!guardian.html", "interactive dependency graph", "findings.json  (evidence)", "sbom.cdx.json  (CycloneDX 1.5,", "  next scan's baseline)", "report.txt"], tag=False)
     arrow("M250 239 L286 239")
     arrow("M650 239 L686 239")
@@ -96,7 +96,7 @@ def build() -> str:
     out.append(f'<text x="1518" y="124" class="t" fill="{s}">Public data (read-only)</text>')
     out.append('<text x="1518" y="146" class="lg">cached in .cache/ → offline demo</text>')
     ext = [("OSV.dev", "CVEs for every ecosystem"), ("deps.dev", "resolve transitive deps"),
-           ("npm + PyPI registries", "metadata · downloads · versions"), ("Trivy + Grype DBs", "independent vuln databases"),
+           ("npm + PyPI registries", "metadata · downloads · versions"), ("Trivy + Grype DBs", "called by the scan plan"),
            ("FIRST EPSS", "exploit probability"), ("CISA KEV", "exploited in the wild"),
            ("OCI registries", "image → sha256 digest"), ("GitHub API", "action tag → commit SHA"),
            ("Maven Central", "parent POMs · BOMs")]

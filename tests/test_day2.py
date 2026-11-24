@@ -218,3 +218,41 @@ class SafetyGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClosingAnswerTest(unittest.TestCase):
+    """Weaker models keep calling tools or drop the {"final": ...} wrapper; the engine still gets an answer."""
+
+    class Script:
+        enabled = True
+
+        def __init__(self, replies):
+            self.replies, self.calls = list(replies), []
+
+        def ask_json(self, system, user, purpose):
+            self.calls.append(purpose)
+            return self.replies.pop(0), {"provider": "fake", "model": "m", "errors": []}
+
+    class Box:
+        docs = {"item_details": ""}
+
+        def run(self, name, args):
+            return {"ok": True}
+
+    def _agent(self):
+        from guardian.agents.base import Agent
+        return Agent(name="vulnerability_analyst", title="Analyst", mission="m", output_format="{}",
+                     tools=["item_details"], max_steps=2)
+
+    def test_closing_call_after_step_limit(self):
+        tool = {"tool": "item_details", "args": {}, "why": "look"}
+        r = self.Script([tool, tool, {"final": {"verdict": "confirmed_risk", "evidence_refs": ["E2"]}}])
+        out = self._agent().run(r, {"id": "R-1"}, self.Box(), "R-1")
+        self.assertEqual(out["output"]["verdict"], "confirmed_risk")
+        self.assertTrue(r.calls[-1].endswith("(closing)"))
+        self.assertEqual(out["error"], "")
+
+    def test_unwrapped_verdict_accepted(self):
+        r = self.Script([{"verdict": "false_positive", "evidence_refs": ["E1"]}])
+        out = self._agent().run(r, {"id": "R-1"}, self.Box(), "R-1")
+        self.assertEqual(out["output"], {"verdict": "false_positive", "evidence_refs": ["E1"]})

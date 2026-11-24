@@ -41,7 +41,7 @@
 <text x="706" y="164" class="t" fill="#1f4e9c">2 · DETECT</text>
 <text x="1096" y="162" class="tag" text-anchor="end" fill="#1f4e9c">deterministic engine</text>
 <text x="706" y="192" class="l">osv.py        1.1/1.2 CVEs · CVSS · fixed version</text>
-<text x="706" y="213" class="l">scanners.py   Trivy + Grype cross-check (N of M)</text>
+<text x="706" y="213" class="l">scanners.py   dynamic plan → Trivy/Grype only where needed</text>
 <text x="706" y="234" class="l">packages.py   1.3 typosquat · 1.4 install scripts</text>
 <text x="706" y="255" class="l">lockfile.py   1.6 tamper · registry · diff</text>
 <text x="706" y="276" class="l">container.py 1.5 images · cicd.py 1.7 actions</text>
@@ -163,7 +163,7 @@
 <text x="1530" y="411" class="l">metadata · downloads · versions</text>
 <rect x="1516" y="450" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
 <text x="1530" y="482" class="t2" fill="#1f7a3a">Trivy + Grype DBs</text>
-<text x="1530" y="507" class="l">independent vuln databases</text>
+<text x="1530" y="507" class="l">called by the scan plan</text>
 <rect x="1516" y="546" width="238" height="80" rx="10" fill="#e9f6ee" stroke="#1f7a3a" stroke-width="1.5"/>
 <text x="1530" y="578" class="t2" fill="#1f7a3a">FIRST EPSS</text>
 <text x="1530" y="603" class="l">exploit probability</text>
