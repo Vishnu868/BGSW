@@ -128,11 +128,12 @@
 <text x="596" y="899" class="l b">→ remediation.patch</text>
 <rect x="870" y="736" width="280" height="212" rx="12" fill="#e8f0fc" stroke="#1f4e9c" stroke-width="2"/>
 <text x="886" y="766" class="t" fill="#1f4e9c">7 · VALIDATE</text>
-<text x="886" y="794" class="l">lockfile resolve</text>
-<text x="886" y="815" class="l">(+ npm ci / tests)</text>
-<text x="886" y="836" class="l">rescan, before vs after</text>
-<text x="886" y="857" class="l">Planner agent: next fix</text>
-<text x="886" y="878" class="l b">verified · partial · failed</text>
+<text x="886" y="794" class="l">lockfile resolve (+ tests)</text>
+<text x="886" y="815" class="l">rescan, before vs after</text>
+<text x="886" y="836" class="l">graph_diff.html: graph</text>
+<text x="886" y="857" class="l">  before vs after, coloured</text>
+<text x="886" y="878" class="l">Planner agent: next fix</text>
+<text x="886" y="899" class="l b">verified · partial · failed</text>
 <rect x="1180" y="736" width="270" height="212" rx="12" fill="#f4f5f7" stroke="#5b6876" stroke-width="2" stroke-dasharray="6 4"/>
 <text x="1196" y="766" class="t" fill="#5b6876">REPORT + POLICY</text>
 <text x="1196" y="794" class="l b">guardian_report.html</text>

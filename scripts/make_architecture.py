@@ -80,7 +80,7 @@ def build() -> str:
     box(50, 736, 240, 212, "engine", "4 · PLAN", ["rule proposal →", "Planner agent →", "verifier → Critic", "9 allow-listed actions", "fix's own tree checked", "!plan = SHA-256 hash"])
     box(320, 736, 230, 212, "human", "5 · APPROVE", ["business facts + review", "queue (optional)", "approval bound to", "the plan hash", "!no yes → no change"])
     box(580, 736, 260, 212, "engine", "6 · APPLY (sandbox)", ["copy + git branch", "edit package.json /", "FROM / uses: lines", "lockfiles --ignore-scripts", "kill switch: STOP file", "!→ remediation.patch"])
-    box(870, 736, 280, 212, "engine", "7 · VALIDATE", ["lockfile resolve", "(+ npm ci / tests)", "rescan, before vs after", "Planner agent: next fix", "!verified · partial · failed"])
+    box(870, 736, 280, 212, "engine", "7 · VALIDATE", ["lockfile resolve (+ tests)", "rescan, before vs after", "graph_diff.html: graph", "  before vs after, coloured", "Planner agent: next fix", "!verified · partial · failed"])
     box(1180, 736, 270, 212, "data", "REPORT + POLICY", ["!guardian_report.html", "evidence → agents →", "approval → result →", "remaining risk", "policy.json gate", "(exit 1 blocks CI)"], tag=False)
     arrow("M1345 654 L1345 684 L245 684 L245 732", "analysis.json", 640, 678)
     arrow("M290 842 L316 842")

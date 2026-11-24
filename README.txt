@@ -34,7 +34,8 @@ Day 2 - Shield
   python -m guardian plan <repo>
   python -m guardian approve <repo> [--web]
   python -m guardian apply <repo> [--dry-run]
-  python -m guardian validate <repo> [--install] [--test-cmd "npm test"]
+  python -m guardian validate <repo> [--install] [--test-cmd "npm test"]   (+ graph_diff.html)
+  python -m guardian diff <repo>                   dependency graph before vs after the fixes
   python -m guardian report <repo>
   python -m guardian policy <repo>
 Other
@@ -58,6 +59,7 @@ PIPELINE
 5 Approve    guardian/remediate/approval.py   human approval bound to the plan hash
 6 Apply      guardian/remediate/apply.py      sandbox git branch, kill switch, remediation.patch
 7 Validate   guardian/validate/               rescan, before/after, next iteration
+             guardian/report/diff.py          graph_diff.html: dependency graph before vs after, coloured
   Report     guardian/report/final.py, guardian/policy.py
 
 The six agents
