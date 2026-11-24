@@ -135,10 +135,11 @@ def build(run_dir: Path) -> dict:
             pkgs[k]["on_path"] = True
     roots = {id2key_b.get(r, r) for r in before.get("roots", [])} | {id2key_a.get(r, r) for r in after.get("roots", [])}
     focus |= roots
-    names = {}
+    names, kinds = {}, {}
     for g, i2k in ((before, id2key_b), (after, id2key_a)):
         for n in g["nodes"]:
             names.setdefault(i2k[n["id"]], n.get("name", n["id"]))
+            kinds.setdefault(i2k[n["id"]], n.get("kind", ""))
     eb = {(id2key_b.get(s, s), id2key_b.get(t, t)) for s, t in before["edges"]}
     ea = {(id2key_a.get(s, s), id2key_a.get(t, t)) for s, t in after["edges"]}
     edges = []
@@ -151,7 +152,7 @@ def build(run_dir: Path) -> dict:
         if k in pkgs:
             nodes.append(pkgs[k])
         else:
-            nodes.append({"key": k, "name": names.get(k, k), "status": "context", "kind": "project",
+            nodes.append({"key": k, "name": names.get(k, k), "status": "context", "kind": kinds.get(k, "application"),
                           "before": [], "after": [], "before_findings": [], "after_findings": [], "action": ""})
 
     def sev_count(g):
@@ -186,101 +187,136 @@ def write(run_dir: Path, log=print) -> Path:
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Graph before vs after</title>
 <style>
-:root{--bg:#f6f8fb;--card:#fff;--ink:#16202c;--muted:#5b6876;--line:#d5dbe3;--navy:#1e3a8a}
-*{box-sizing:border-box}body{margin:0;font:14px/1.45 "Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-header{padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line)}
-h1{margin:0;font-size:20px}h1 span{color:#c8194e}.sub{color:var(--muted);margin-top:2px}
-.tiles{display:flex;gap:10px;flex-wrap:wrap;padding:12px 20px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:150px}
-.tile b{display:block;font-size:22px}.tile small{color:var(--muted)}
-.legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 20px 8px;align-items:center}
-.legend label{display:flex;gap:6px;align-items:center;cursor:pointer;user-select:none}
-.dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:2px solid transparent}
-main{display:grid;grid-template-columns:1fr 360px;gap:12px;padding:0 20px 20px}
-#net{height:640px;background:var(--card);border:1px solid var(--line);border-radius:10px}
-aside{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;height:640px;overflow:auto}
-aside h3{margin:0 0 6px}.pill{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-size:12px}
-table{width:100%;border-collapse:collapse;margin:0 20px 30px;width:calc(100% - 40px);background:var(--card)}
-th,td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}th{background:#eef2f7}
-.f{font-size:12px;color:var(--muted)}.sev-critical{color:#8b0f2a;font-weight:600}.sev-high{color:#d9442b;font-weight:600}
-@media (max-width:900px){main{grid-template-columns:1fr}aside{height:auto}}
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16202c;--muted:#5b6876;--line:#dfe3e8;--accent:#1f4e9c;--chip:#eef1f5;
+--fixed:#1f9d55;--upgraded:#2f6db5;--replaced:#0e9aa7;--removed:#8a97a6;--added:#9b4dca;--remaining:#e89b0c;--newi:#d9432b;--ctx:#7d93ab}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f141a;--panel:#171e26;--ink:#e6ebf0;--muted:#9aa8b6;--line:#2a3440;
+ --accent:#7fb0ff;--chip:#222c37;--fixed:#34c47a;--upgraded:#5d97dd;--replaced:#2cc4cf;--removed:#9aa8b6;--added:#c07af0;--ctx:#6f8499}}
+:root[data-theme=dark]{--bg:#0f141a;--panel:#171e26;--ink:#e6ebf0;--muted:#9aa8b6;--line:#2a3440;--accent:#7fb0ff;--chip:#222c37;
+ --fixed:#34c47a;--upgraded:#5d97dd;--replaced:#2cc4cf;--removed:#9aa8b6;--added:#c07af0;--ctx:#6f8499}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:16px 20px 8px;display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
+h1{font-size:20px;margin:0}h1 small{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
+.tiles{display:flex;flex-wrap:wrap;gap:10px;padding:0 20px 12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:110px}
+.tile b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.tile span{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--muted);font:inherit;cursor:pointer}
+nav button.on{color:var(--ink);border-color:var(--accent);font-weight:600}
+.tab{display:none;padding:12px 20px 20px}.tab.on{display:block}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+input[type=search]{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin-bottom:10px;align-items:center}
+.legend label{display:flex;gap:5px;align-items:center;cursor:pointer;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px;border:2px solid transparent}
+.split{display:grid;grid-template-columns:1fr 380px;gap:12px}
+#net{height:72vh;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+#side{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;height:72vh;overflow:auto}
+.pill{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;padding:1px 8px;border-radius:999px;color:#fff}
+.chip{display:inline-block;background:var(--chip);border-radius:6px;padding:1px 7px;font-size:12px;margin:2px 4px 2px 0}
+.path{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--chip);border-radius:6px;padding:6px 8px;word-break:break-word}
+.muted{color:var(--muted)}h3{margin:0 0 6px}h4{margin:12px 0 4px;font-size:13px}
+ul{margin:4px 0;padding-left:18px}li{font-size:12px;margin:2px 0}
+.sev-critical{color:#e0455f;font-weight:600}.sev-high{color:#f0673f;font-weight:600}.sev-medium{color:var(--remaining)}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:7px 10px;word-break:break-word;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}
+th{color:var(--muted);font-weight:600;font-size:12px}tr.click{cursor:pointer}tr.click:hover{background:var(--chip)}
+.tablewrap{overflow-x:auto}
+@media (max-width:900px){.split{grid-template-columns:1fr}#net{height:60vh}#side{height:auto}header,.tiles,nav,.tab{padding-left:16px;padding-right:16px}}
 </style></head><body>
-<header><h1><span>Dependency graph</span> before vs after the approved fixes</h1>
-<div class="sub" id="sub"></div></header>
+<header><h1>Software Supply Chain Guardian <small id="repo"></small></h1><div class="muted">dependency graph before vs after the approved fixes</div></header>
 <div class="tiles" id="tiles"></div>
-<div class="legend" id="legend"></div>
-<main><div id="net"></div><aside id="side"><h3>Click a package</h3><p class="f">The view shows every package that changed,
-plus its path from the project. Packages are matched by name, so a version change is one node.</p></aside></main>
-<table id="tbl"></table>
+<nav id="nav"><button data-t="graph" class="on">Graph before vs after</button><button data-t="table">Changed packages</button></nav>
+<section class="tab on" id="t-graph">
+ <div class="controls"><input type="search" id="find" placeholder="Find package (e.g. jsonwebtoken), Enter"><span class="muted" id="shown"></span></div>
+ <div class="legend" id="legend"></div>
+ <div class="split"><div id="net"></div><aside id="side"><h3>Click a package</h3><p class="muted">The view shows every package that
+ changed, plus its path from the project. Packages are matched by name, so a version change is one node.</p></aside></div>
+</section>
+<section class="tab" id="t-table"><div class="tablewrap"><table id="tbl"></table></div></section>
 <script>/*__VIS__*/</script>
 <script>
 const D = __DATA__;
-const COL = {fixed:"#1f7a3a", upgraded:"#1e3a8a", replaced:"#0e7c86", removed:"#9aa4b1", added:"#6b3fa0",
-             remaining:"#d08a00", new_issue:"#c8194e", context:"#5b6876"};
-const LBL = {fixed:"fixed (vulnerable before, clean now)", upgraded:"upgraded (new version)", replaced:"replaced (typosquat -> genuine)",
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const VAR = {fixed:"--fixed", upgraded:"--upgraded", replaced:"--replaced", removed:"--removed", added:"--added",
+             remaining:"--remaining", new_issue:"--newi", context:"--ctx"};
+const COL = Object.fromEntries(Object.entries(VAR).map(([k, v]) => [k, css(v)]));
+const LBL = {fixed:"fixed (vulnerable before, clean now)", upgraded:"upgraded (new version)", replaced:"replaced (typosquat → genuine)",
              removed:"removed (dropped with the old version)", added:"added (new dependency)", remaining:"still vulnerable",
              new_issue:"NEW problem after the fix", context:"project / path"};
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-$("#sub").textContent = `${D.repo}: before = original scan, after = rescan of the remediated sandbox (validate). `
-  + `Approved actions: ${D.actions.map(a => a.id).join(", ") || "none"}.`;
-const t = (h, b, a, s) => `<div class="tile"><small>${h}</small><b>${b} &rarr; ${a}</b><small>${s || ""}</small></div>`;
-$("#tiles").innerHTML = t("components", D.before.components, D.after.components)
-  + t("findings", D.before.findings, D.after.findings)
-  + t("critical", D.before.sev.critical, D.after.sev.critical) + t("high", D.before.sev.high, D.after.sev.high)
-  + Object.entries(D.counts).map(([k, v]) => `<div class="tile"><small>${LBL[k]}</small><b style="color:${COL[k]}">${v}</b></div>`).join("");
-const shown = new Set(Object.keys(COL).filter(k => k !== "remaining"));   // untouched-but-vulnerable: off by default
+$("#repo").textContent = D.repo + " · approved actions " + (D.actions.map(a => a.id).join(", ") || "none");
+const T = (a, b, s) => `<div class="tile"><b>${a} → ${b}</b><span>${s}</span></div>`;
+const C = k => `<div class="tile"><b style="color:${COL[k]}">${D.counts[k]}</b><span>${k.replace("_", " ")}</span></div>`;
+$("#tiles").innerHTML = T(D.before.components, D.after.components, "components") + T(D.before.findings, D.after.findings, "total findings")
+  + T(D.before.sev.critical, D.after.sev.critical, "critical findings") + T(D.before.sev.high, D.after.sev.high, "high findings")
+  + ["fixed", "upgraded", "replaced", "removed", "added", "remaining", "new_issue"].map(C).join("");
+document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#nav button,.tab").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); $("#t-" + b.dataset.t).classList.add("on"); });
+const shown = new Set(Object.keys(COL).filter(k => k !== "remaining"));
+const ECOL = {both: "#3b82f6", before: "#f97316", after: "#c026d3"};
 $("#legend").innerHTML = Object.keys(COL).map(k => `<label><input type="checkbox" ${shown.has(k) ? "checked" : ""} data-k="${k}">
-  <span class="dot" style="background:${k === "removed" ? "#fff" : COL[k]};border-color:${COL[k]}${k === "removed" ? ";border-style:dashed" : ""}"></span>${LBL[k]}</label>`).join("")
-  + `<span style="margin-left:12px">Lines:</span>
-     <span><b style="color:#2563eb">━━</b> link kept</span>
-     <span><b style="color:#f97316">╍╍</b> link only before (dropped)</span>
-     <span><b style="color:#a21caf">━━</b> new link after the fix</span>`;
+  <span class="dot" style="background:${k === "removed" ? "transparent" : COL[k]};border-color:${COL[k]}${k === "removed" ? ";border-style:dashed" : ""}"></span>${LBL[k]}</label>`).join("")
+  + `<span>★ project</span><span>■ container image</span><span>◆ CI action</span>`
+  + `<span>Lines: <b style="color:${ECOL.both}">━━</b> kept · <b style="color:${ECOL.before}">╍╍</b> only before (dropped) · <b style="color:${ECOL.after}">━━</b> new after the fix</span>`;
 const ver = n => n.before.length || n.after.length
   ? (n.before.join(",") || "-") + (n.before.join() === n.after.join() ? "" : " → " + (n.after.join(",") || "gone")) : "";
+const shapeOf = n => ["repository", "application"].includes(n.kind) ? "star" : n.kind === "container" ? "square"
+  : ["action", "ci-action"].includes(n.kind) ? "diamond" : "dot";
 function nodeOf(n) {
-  const c = COL[n.status] || COL.context;
-  const big = n.status === "context" ? 14 : (n.before_findings.length || n.after_findings.length ? 18 : 11);
+  const c = COL[n.status] || COL.context, ctx = n.status === "context";
+  const size = ctx ? 16 : (n.before_findings.length || n.after_findings.length ? 13 : 8);
   return {id: n.key, label: n.name + (ver(n) ? "\n" + ver(n) : "") + (n.action ? "  [" + n.action + "]" : ""),
-          shape: n.status === "context" ? "box" : "dot", size: big,
-          color: {background: n.status === "removed" ? "#ffffff" : c, border: c, highlight: {background: c, border: "#16202c"}},
+          shape: shapeOf(n), size,
+          color: {background: n.status === "removed" ? css("--panel") : c, border: c, highlight: {background: c, border: css("--ink")}},
           shapeProperties: {borderDashes: n.status === "removed" ? [4, 3] : false}, borderWidth: n.status === "removed" ? 2 : 1,
-          font: {size: 16, color: n.status === "removed" ? "#5b6876" : "#16202c", multi: false, background: "rgba(255,255,255,0.8)"},
-          scaling: {label: {enabled: true, min: 12, max: 20, drawThreshold: 1}},
+          font: {size: 15, color: css("--ink"), strokeWidth: 3, strokeColor: css("--panel")},
+          scaling: {label: {enabled: true, min: 11, max: 18, drawThreshold: 1}},
           hidden: !shown.has(n.status) && !n.on_path};
 }
 const nodes = new vis.DataSet(D.nodes.map(nodeOf));
-// bright, thick lines: blue = link kept, orange dashed = link only before (dropped), violet = new link after the fix
-const ECOL = {both: "#2563eb", before: "#f97316", after: "#a21caf"};
-const edges = new vis.DataSet(D.edges.map((e, i) => ({id: i, from: e.from, to: e.to, arrows: {to: {enabled: true, scaleFactor: 0.6}},
-  dashes: e.kind === "before" ? [8, 6] : false, color: {color: ECOL[e.kind], highlight: "#16202c", hover: "#16202c", opacity: 1},
-  width: 4, hoverWidth: 2, selectionWidth: 3})));
+const edges = new vis.DataSet(D.edges.map((e, i) => ({id: i, from: e.from, to: e.to, arrows: {to: {enabled: true, scaleFactor: 0.5}},
+  dashes: e.kind === "before" ? [8, 6] : false, color: {color: ECOL[e.kind], highlight: css("--ink"), hover: css("--ink"), opacity: 1},
+  width: 3, hoverWidth: 2, selectionWidth: 3})));
 const net = new vis.Network($("#net"), {nodes, edges}, {
   layout: {improvedLayout: D.nodes.length < 400},
-  physics: {solver: "forceAtlas2Based", forceAtlas2Based: {gravitationalConstant: -60, springLength: 110},
-            stabilization: {iterations: 250}}, interaction: {hover: true}});
+  physics: {solver: "forceAtlas2Based", forceAtlas2Based: {gravitationalConstant: -70, springLength: 110}, stabilization: {iterations: 250}},
+  interaction: {hover: true}});
 net.once("stabilizationIterationsDone", () => net.setOptions({physics: false}));
+const count = () => $("#shown").textContent = `${nodes.get({filter: n => !n.hidden}).length} packages · ${D.edges.length} links shown`;
+count();
+function reveal(status) {
+  if (shown.has(status)) return;
+  shown.add(status); document.querySelector(`#legend [data-k="${status}"]`).checked = true;
+  nodes.update(D.nodes.map(x => ({id: x.key, hidden: !shown.has(x.status) && !x.on_path}))); count();
+}
 document.querySelectorAll("#legend input").forEach(cb => cb.addEventListener("change", () => {
   cb.checked ? shown.add(cb.dataset.k) : shown.delete(cb.dataset.k);
-  nodes.update(D.nodes.map(n => ({id: n.key, hidden: !shown.has(n.status) && !n.on_path})));
-}));
+  nodes.update(D.nodes.map(n => ({id: n.key, hidden: !shown.has(n.status) && !n.on_path}))); count(); }));
 const byKey = Object.fromEntries(D.nodes.map(n => [n.key, n]));
-const fl = fs => fs.length ? "<ul>" + fs.map(f => `<li class="sev-${f.sev}">${esc(f.sev)}: ${esc(f.title)}</li>`).join("") + "</ul>" : "<p class='f'>none</p>";
+const fl = fs => fs.length ? "<ul>" + fs.map(f => `<li class="sev-${f.sev}">${esc(f.sev)}: ${esc(f.title)}</li>`).join("") + "</ul>" : "<p class='muted'>none</p>";
 function side(n) {
   const act = D.actions.find(a => a.id === n.action);
   $("#side").innerHTML = `<h3>${esc(n.name)}</h3><span class="pill" style="background:${COL[n.status]}">${esc(LBL[n.status])}</span>
-    <p><b>Version:</b> ${esc(ver(n) || "-")}${n.replaced_by ? "<br><b>Replaced by:</b> " + esc(n.replaced_by) : ""}</p>
-    ${act ? `<p><b>Caused by approved action ${act.id}</b> (${esc(act.type)})<br><span class="f">${esc(JSON.stringify(act.params))}</span></p>` :
-      (n.status === "removed" || n.status === "added" || n.status === "fixed") ? "<p class='f'>Changed as a consequence of an upgrade of the package that brings it in (see the path).</p>" : ""}
-    <p><b>Path from the project:</b><br><span class="f">${(n.path || []).map(k => esc((byKey[k] || {name: k}).name)).join(" &rarr; ")}</span></p>
-    <p><b>Findings before (${n.before_findings.length})</b></p>${fl(n.before_findings)}
-    <p><b>Findings after (${n.after_findings.length})</b></p>${fl(n.after_findings)}`;
+    <h4>Version</h4><div class="chip">${esc(ver(n) || "-")}</div>${n.replaced_by ? `<div class="chip">replaced by ${esc(n.replaced_by)}</div>` : ""}
+    ${act ? `<h4>Caused by approved action ${act.id}</h4><div class="chip">${esc(act.type)}</div><div class="path">${esc(JSON.stringify(act.params))}</div>` :
+      ["removed", "added", "fixed"].includes(n.status) ? "<h4>Why it changed</h4><p class='muted'>Consequence of upgrading the package that brings it in (see the path).</p>" : ""}
+    <h4>Dependency path</h4><div class="path">${(n.path || []).map(k => esc((byKey[k] || {name: k}).name)).join(" → ")}</div>
+    <h4>Findings before (${n.before_findings.length})</h4>${fl(n.before_findings)}
+    <h4>Findings after (${n.after_findings.length})</h4>${fl(n.after_findings)}`;
 }
+function go(n) { reveal(n.status); net.selectNodes([n.key]); net.focus(n.key, {scale: 1.2, animation: true}); side(n); }
 net.on("click", p => { if (p.nodes.length && byKey[p.nodes[0]]) side(byKey[p.nodes[0]]); });
+$("#find").addEventListener("keydown", e => { if (e.key !== "Enter") return;
+  const q = e.target.value.trim().toLowerCase(), n = D.nodes.find(x => x.name.toLowerCase().includes(q)); if (n) go(n); });
 const order = ["new_issue", "remaining", "replaced", "fixed", "upgraded", "removed", "added"];
 const rows = D.nodes.filter(n => order.includes(n.status)).sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.name.localeCompare(b.name));
-$("#tbl").innerHTML = "<tr><th>Status</th><th>Package</th><th>Version before &rarr; after</th><th>Findings before &rarr; after</th><th>Action</th></tr>"
-  + rows.map(n => `<tr><td><span class="pill" style="background:${COL[n.status]}">${n.status.replace("_", " ")}</span></td>
-    <td>${esc(n.name)}${n.direct ? " <span class='f'>(direct)</span>" : ""}</td><td>${esc(ver(n))}</td>
-    <td>${n.before_findings.length} &rarr; ${n.after_findings.length}</td><td>${esc(n.action)}</td></tr>`).join("");
+$("#tbl").innerHTML = "<tr><th>Status</th><th>Package</th><th>Version before → after</th><th>Findings before → after</th><th>Action</th></tr>"
+  + rows.map(n => `<tr class="click" data-k="${esc(n.key)}"><td><span class="pill" style="background:${COL[n.status]}">${n.status.replace("_", " ")}</span></td>
+    <td>${esc(n.name)}${n.direct ? " <span class='muted'>(direct)</span>" : ""}</td><td>${esc(ver(n))}</td>
+    <td>${n.before_findings.length} → ${n.after_findings.length}</td><td>${esc(n.action)}</td></tr>`).join("");
+$("#tbl").addEventListener("click", e => { const tr = e.target.closest("tr.click"); if (!tr) return;
+  document.querySelector('#nav [data-t="graph"]').click(); go(byKey[tr.dataset.k]); });
 </script></body></html>"""
