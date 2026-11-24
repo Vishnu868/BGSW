@@ -12,6 +12,7 @@ Day 2 (Brain & Shield)  analyze   <repo>             5 agents + symbolic verifie
                         report    <repo>             final Guardian report (JSON + MD + HTML)
                         run       <folder|git-url>   everything above in order (approval still interactive)
 Extras                  policy    <repo>             policy-as-code gate (exit 1 on violation)
+                        ui                           control panel in the browser: one button per step, live output
                         llm-check                    test the configured AI providers
 <repo> is the run name, e.g. juice-shop (outputs live in runs/<repo>/).
 """
@@ -78,6 +79,9 @@ def main(argv=None) -> int:
     po.add_argument("repo")
     po.add_argument("--policy", default=str(ROOT / "config" / "policy.json"))
     sub.add_parser("llm-check")
+    ui = sub.add_parser("ui")
+    ui.add_argument("--port", type=int, default=8780)
+    ui.add_argument("--no-browser", action="store_true")
     full = sub.add_parser("run")
     full.add_argument("target")
     full.add_argument("--top", type=int, default=6)
@@ -135,6 +139,9 @@ def main(argv=None) -> int:
             print(f"  DENY {v_['rule']:<34} {v_['severity']:<8} {v_['title'][:90]}")
         print(f"policy {'PASSED' if res['passed'] else 'FAILED'}: {len(res['violations'])} violation(s)")
         return 0 if res["passed"] else 1
+    elif args.cmd == "ui":
+        from . import ui as panel
+        panel.serve(args.port, open_browser=not args.no_browser)
     elif args.cmd == "llm-check":
         from .llm import check
         for row in check():

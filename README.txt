@@ -41,6 +41,8 @@ Day 2 - Shield
 Other
   python -m guardian run <folder | git URL>        the whole loop (approval still interactive)
   python -m guardian llm-check                     test the configured AI providers
+  python -m guardian ui                            control panel at http://127.0.0.1:8780: one button per step,
+                                                   live output, answer box, kill switch, links to every result
   python scripts\simulate_pr.py targets\juice-shop local copy with a simulated malicious change
   python scripts\backup_runs.py                    freeze all demo results into a zip
 

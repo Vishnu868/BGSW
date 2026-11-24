@@ -71,7 +71,8 @@ def run_trivy(target: str, out_file: Path, offline: bool, image: bool = False, s
            "--cache-dir", str(CACHE / "trivy"), "--output", str(out_file)]
     if offline:
         cmd += ["--skip-db-update", "--offline-scan"]
-    r = subprocess.run(cmd + [target], capture_output=True, text=True, timeout=900)
+    r = subprocess.run(cmd + [target], capture_output=True, text=True, timeout=900,
+                       stdin=subprocess.DEVNULL)   # never read from an inherited pipe
     if r.returncode != 0 or not out_file.exists():
         return [], f"failed: {(r.stderr or r.stdout).strip()[-200:]}"
     data = json.loads(out_file.read_text(encoding="utf-8"))
@@ -97,6 +98,7 @@ def run_grype(target: str, out_file: Path, offline: bool) -> tuple[list[dict], s
     if offline:
         env.update(GRYPE_DB_AUTO_UPDATE="false", GRYPE_DB_VALIDATE_AGE="false")
     r = subprocess.run([exe, target, "-o", "json", "--file", str(out_file), "-q"], capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL,   # grype reads an SBOM from stdin when it is a pipe
                        timeout=900, env=env)
     if r.returncode != 0 or not out_file.exists():
         return [], f"failed: {(r.stderr or r.stdout).strip()[-200:]}"

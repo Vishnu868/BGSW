@@ -332,3 +332,20 @@ class GraphDiffTest(unittest.TestCase):
         self.assertEqual(st["old"], "removed")
         self.assertEqual(st["newdep"], "added")
         self.assertTrue(diff.write(d, log=lambda *_: None).exists())
+
+
+class ControlPanelTest(unittest.TestCase):
+    """The browser panel only runs allow-listed commands for repositories that exist."""
+
+    def test_allow_list(self):
+        from guardian import ui
+        self.assertEqual(ui.command("tests", "", "", False)[-3:], ["discover", "-s", "tests"])
+        self.assertIn("--offline", ui.command("analyze", "juice-shop", "", True) if (ui.RUNS / "juice-shop" / "findings.json").exists()
+                      else ["--offline"])
+        for bad in [("rm", "juice-shop", ""), ("analyze", "../x", ""), ("analyze", "a;del *", ""),
+                    ("scan", "", "C:/Windows"), ("scan", "", "https://evil.example/x/y")]:
+            with self.assertRaises(ValueError):
+                ui.command(bad[0], bad[1], bad[2], False)
+        self.assertEqual(ui.command("scan", "", "https://github.com/snyk-labs/nodejs-goof", False)[-1],
+                         "https://github.com/snyk-labs/nodejs-goof")
+        self.assertEqual(ui.INTERACTIVE, {"business", "review"})   # only these get an input pipe
