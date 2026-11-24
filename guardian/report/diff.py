@@ -231,7 +231,11 @@ $("#tiles").innerHTML = t("components", D.before.components, D.after.components)
   + Object.entries(D.counts).map(([k, v]) => `<div class="tile"><small>${LBL[k]}</small><b style="color:${COL[k]}">${v}</b></div>`).join("");
 const shown = new Set(Object.keys(COL).filter(k => k !== "remaining"));   // untouched-but-vulnerable: off by default
 $("#legend").innerHTML = Object.keys(COL).map(k => `<label><input type="checkbox" ${shown.has(k) ? "checked" : ""} data-k="${k}">
-  <span class="dot" style="background:${k === "removed" ? "#fff" : COL[k]};border-color:${COL[k]}${k === "removed" ? ";border-style:dashed" : ""}"></span>${LBL[k]}</label>`).join("");
+  <span class="dot" style="background:${k === "removed" ? "#fff" : COL[k]};border-color:${COL[k]}${k === "removed" ? ";border-style:dashed" : ""}"></span>${LBL[k]}</label>`).join("")
+  + `<span style="margin-left:12px">Lines:</span>
+     <span><b style="color:#2563eb">━━</b> link kept</span>
+     <span><b style="color:#f97316">╍╍</b> link only before (dropped)</span>
+     <span><b style="color:#a21caf">━━</b> new link after the fix</span>`;
 const ver = n => n.before.length || n.after.length
   ? (n.before.join(",") || "-") + (n.before.join() === n.after.join() ? "" : " → " + (n.after.join(",") || "gone")) : "";
 function nodeOf(n) {
@@ -246,9 +250,11 @@ function nodeOf(n) {
           hidden: !shown.has(n.status) && !n.on_path};
 }
 const nodes = new vis.DataSet(D.nodes.map(nodeOf));
-const edges = new vis.DataSet(D.edges.map((e, i) => ({id: i, from: e.from, to: e.to, arrows: "to",
-  dashes: e.kind === "before", color: {color: e.kind === "after" ? "#6b3fa0" : e.kind === "before" ? "#c3cad4" : "#9aa4b1"},
-  width: e.kind === "both" ? 1 : 1.5})));
+// bright, thick lines: blue = link kept, orange dashed = link only before (dropped), violet = new link after the fix
+const ECOL = {both: "#2563eb", before: "#f97316", after: "#a21caf"};
+const edges = new vis.DataSet(D.edges.map((e, i) => ({id: i, from: e.from, to: e.to, arrows: {to: {enabled: true, scaleFactor: 0.6}},
+  dashes: e.kind === "before" ? [8, 6] : false, color: {color: ECOL[e.kind], highlight: "#16202c", hover: "#16202c", opacity: 1},
+  width: 4, hoverWidth: 2, selectionWidth: 3})));
 const net = new vis.Network($("#net"), {nodes, edges}, {
   layout: {improvedLayout: D.nodes.length < 400},
   physics: {solver: "forceAtlas2Based", forceAtlas2Based: {gravitationalConstant: -60, springLength: 110},
