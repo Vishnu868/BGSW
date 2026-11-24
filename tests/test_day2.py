@@ -157,7 +157,8 @@ class OrchestratorTests(unittest.TestCase):
                        {"final": {"reviews": [{"id": "R-002", "agree": True}], "evidence_refs": ["E1"]}}]})
         items = [dict(ITEM), dict(TYPO)]
         res = orchestrator.run(items, FakeFacts(), router, top=2, workers=2, log=lambda *_: None)
-        self.assertEqual(len(res["agents"]), 6)
+        self.assertEqual(len(res["agents"]), 7)
+        self.assertIn("Neurosymbolic Prioritizer", [a["name"] for a in res["agents"]])
         self.assertEqual(items[1]["priority"], "P1")                        # 70 -> 85 by the lead, with reason
         self.assertEqual([q["id"] for q in res["review_queue"]], ["R-001"])  # critic disagreed -> human review
         agents_used = {e["agent"] for c in res["cases"].values() for e in c["entries"]}

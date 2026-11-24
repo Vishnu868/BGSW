@@ -1,8 +1,10 @@
 """Stage 3 - Analyze & prioritise (neurosymbolic, multi-agent).
 
   symbolic prior : reachability (imports), EPSS + CISA KEV, explainable base score -> P1..P4
-  agents         : Orchestrator & Triage lead, Vulnerability Analyst, Supply-Chain Forensics, Critic
+  agents         : Orchestrator & Triage lead, Vulnerability Analyst, Supply-Chain Forensics, Critic, Business Context
   verifier       : every agent answer checked against facts and rules (guardian/neurosymbolic)
+  prioritizer    : agent 6 re-prioritises every risk from the agents' verified outputs with
+                   config/neurosymbolic_rules.json -> score, priority, confidence, explanation
 Input : runs/<repo>/findings.json      Output: business_context.json, analysis.json, analysis.txt, guardian.html (with agent verdicts)
 """
 from __future__ import annotations
@@ -13,6 +15,7 @@ from pathlib import Path
 from .. import audit
 from ..agents import orchestrator
 from ..llm import Router
+from ..neurosymbolic import prioritizer
 from ..neurosymbolic.facts import Facts
 from . import business, intel, prioritize, reachability
 
@@ -36,6 +39,14 @@ def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
 
     log(f"[analyze] multi-agent investigation of the top {top} risks (+ high supply-chain risks)")
     agents = orchestrator.run(items, facts, router, top=top, log=log)
+
+    log("[analyze] neurosymbolic prioritizer: agents 1-5 -> rules -> score, priority, confidence")
+    rf = run_dir / "review.json"
+    ns = prioritizer.run(items, doc, {"kev": kev, "epss": epss}, ctx, agents["cases"],
+                         review=json.loads(rf.read_text(encoding="utf-8")) if rf.exists() else {}, log=log)
+    for q in ns["review"]:
+        if not any(x["id"] == q["id"] for x in agents["review_queue"]):
+            agents["review_queue"].append(q)
     items.sort(key=lambda i: (-i["score"], i["headline"]))
     for n, it in enumerate(items, 1):
         it["rank"] = n
@@ -56,6 +67,7 @@ def run(run_dir: Path, top: int = 6, offline: bool = False, log=print) -> dict:
            "counts": {k: sum(i["priority"] == k for i in items) for k in ("P1", "P2", "P3", "P4")},
            "agents": agents["agents"], "routing": agents["routing"], "cases": agents["cases"],
            "review_queue": agents["review_queue"], "items": items, "llm_calls": router.calls,
+           "neurosymbolic": {k: v for k, v in ns.items() if k != "review"},
            "business_context": {"function": ctx.get("business_function"), "facts": len(ctx["facts"]),
                                 "agent_source": ctx.get("agent", {}).get("source")},
            "business_facts": [{k: f[k] for k in ("project", "fact", "value", "evidence", "line", "source")}
@@ -118,12 +130,16 @@ def markdown(a: dict) -> str:
          a["summary"].get("summary", ""), ""]
     L += [f"- {x}" for x in a["summary"].get("top_actions", [])] + ["",
           f"*Summary source: {a['summary_source']}. AI text is inference; evidence is verified.*", "",
-          "## Prioritised risks", "", "| Rank | Priority | Score (base) | Risk | Reachability | Verdict | Agent |",
-          "|---|---|---|---|---|---|---|"]
+          "## Prioritised risks (neurosymbolic prioritizer)", "",
+          "| Rank | Priority | Score | Confidence | Before (agents) | Risk | Why |", "|---|---|---|---|---|---|---|"]
     for i in a["items"][:30]:
-        ai = i.get("ai") or {}
-        L.append(f"| {i['rank']} | {i['priority']} | {i['score']} ({i['base_score']}) | {i['headline'][:70].replace('|', '/')} | "
-                 f"{i['reachability']['status']} | {ai.get('verdict', '-')} | {ai.get('agent', '-')} ({ai.get('source', '-')}) |")
+        n = i.get("neurosymbolic") or {}
+        L.append(f"| {i['rank']} | {i['priority']} | {i['score']} | {n.get('confidence', '-')} ({n.get('confidence_label', '-')}) | "
+                 f"{i.get('agent_priority', '-')} ({i.get('agent_score', '-')}) | {i['headline'][:60].replace('|', '/')} | "
+                 f"{(n.get('why') or '').replace('|', '/')} |")
+    L += ["", "## Explanations (top 10)", ""]
+    for i in a["items"][:10]:
+        L += [f"### {i['id']}", ""] + [f"- {x}" for x in (i.get("neurosymbolic") or {}).get("explanation", [])] + [""]
     L += ["", "## Needs human review", ""]
     L += [f"- {q['id']}: {q['headline'][:80]} - {q['reason']}" for q in a["review_queue"]] or ["- none"]
     L += ["", "## Agent case files", ""]

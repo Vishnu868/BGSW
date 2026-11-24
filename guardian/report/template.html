@@ -280,17 +280,22 @@ function agentHtml(id) {
   if (!A || !A.by_key[id]) return "";
   const k = A.by_key[id], c = k.case;
   const b = k.business;
-  return `<p style="margin:12px 0 4px"><b>Agents' assessment</b> <span class="chip">${esc(k.priority)} · ${esc(k.score)} (base ${esc(k.base_score)})</span></p>
+  const n = k.ns;
+  return `${n ? `<p style="margin:12px 0 4px"><b>Neurosymbolic prioritizer</b> <span class="chip">${esc(n.priority)} · score ${esc(n.score)}</span><span class="chip">confidence ${esc(n.confidence)} (${esc(n.confidence_label)})</span></p>
+    <div class="ev"><b>${esc(n.why)}</b></div>
+    <div class="ev">${Object.entries(n.dimensions).map(([d, v]) => `<span class="chip">${esc(d.replace("_", " "))} ${esc(v.score)} × ${Math.round(v.weight * 100)}%</span>`).join("")}</div>
+    <details><summary class="ev">full reasoning</summary>${n.explanation.slice(1).map(l => `<div class="ev">${esc(l)}</div>`).join("")}</details>` : ""}
+    <p style="margin:12px 0 4px"><b>Agents' assessment</b> <span class="chip">before: ${esc(n ? n.previous.priority : k.priority)} · ${esc(n ? n.previous.score : k.score)} (base ${esc(k.base_score)})</span></p>
     ${b ? `<div class="ev"><b>business (SSVC):</b> ${esc(b.decision)} (${b.points >= 0 ? "+" : ""}${esc(b.points)}) - ${esc(b.reason)}<div>exploitation ${esc(b.exploitation)} · exposure ${esc(b.exposure)} · automatable ${esc(b.automatable)} · human impact ${esc(b.human_impact)}</div></div>` : ""}
     ${k.ai ? `<div class="ev">${esc(k.ai.agent)}: <b>${esc(k.ai.verdict)}</b> (${esc(k.ai.source)}) - ${esc(k.ai.risk_summary)}</div>` : '<div class="ev">not investigated by agents (below the top-N)</div>'}
     ${c ? c.entries.map(entryHtml).join("") : ""}`;
 }
 function renderAgents() {
-  if (!A) { $("#agents").innerHTML = '<p class="muted">Run <code>python -m guardian analyze &lt;repo&gt;</code> to add the verdicts of the five agents to this page.</p>'; return; }
+  if (!A) { $("#agents").innerHTML = '<p class="muted">Run <code>python -m guardian analyze &lt;repo&gt;</code> to add the agents' verdicts and the neurosymbolic priorities to this page.</p>'; return; }
   const bf = A.business_facts || [], bfn = ((A.business || {}).function) || {};
   $("#agents").innerHTML = `<p>LLM: ${esc(A.llm)}</p><div class="cats">${A.agents.map(a => `<div class="cat"><b>${esc(a.id)}</b> · ${esc(a.name)}</div>`).join("")}</div>
     <p>${esc((A.summary || {}).summary || "")}</p>
-    <h3>Business context (agent 6 + rules, every fact cites file:line)</h3>
+    <h3>Business context (agent 5 + rules, every fact cites file:line)</h3>
     <p>${esc(bfn.value || "")} ${bfn.evidence ? `<span class="chip">${esc(bfn.evidence)}</span>` : ""}</p>
     <div class="tablewrap"><table><thead><tr><th>Project</th><th>Fact</th><th>Evidence</th><th>Source</th></tr></thead><tbody>
     ${bf.map(f => `<tr><td>${esc(f.project)}</td><td>${esc(f.fact)} = <b>${esc(String(f.value))}</b></td><td class="ev">${esc(f.evidence)}<div>${esc(f.line)}</div></td><td>${esc(f.source)}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">none</td></tr>'}
