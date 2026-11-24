@@ -13,6 +13,7 @@ Verdict:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -28,10 +29,19 @@ def _key(f: dict) -> tuple:
     return (f["rule"], cd.get("name") or f["title"], f["data"].get("vuln_id", "") or "")
 
 
+def tool_env() -> dict:
+    """PATH with the portable Node (tools/node) first, so a test command like "npm run build" finds npm and node."""
+    env = dict(os.environ)
+    if NPM.exists():
+        env["PATH"] = str(NPM.parent) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def _run(cmd, cwd: Path, timeout: int) -> dict:
     t0 = time.time()
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, shell=isinstance(cmd, str))
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, shell=isinstance(cmd, str),
+                           env=tool_env(), stdin=subprocess.DEVNULL, encoding="utf-8", errors="replace")
         return {"ok": r.returncode == 0, "exit_code": r.returncode, "seconds": round(time.time() - t0, 1),
                 "output": ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-15:]}
     except subprocess.TimeoutExpired:

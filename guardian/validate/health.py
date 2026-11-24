@@ -248,7 +248,9 @@ def run(run_dir: Path, test_cmd: str = "", log=print) -> dict:
     tests = None
     if test_cmd:
         log(f"[health] 3/3 running the application's tests: {test_cmd}")
-        r = subprocess.run(test_cmd, cwd=sb, shell=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=1800)
+        from . import tool_env
+        r = subprocess.run(test_cmd, cwd=sb, shell=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=1800,
+                           env=tool_env(), encoding="utf-8", errors="replace")
         tests = {"cmd": test_cmd, "ok": r.returncode == 0, "output": (r.stdout + r.stderr).strip().splitlines()[-15:]}
     else:
         log("[health] 3/3 application tests: not requested (add --test-cmd \"npm test\" for a full run)")
