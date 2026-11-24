@@ -3,9 +3,12 @@ rule-based logic (callers receive None). Every call is logged (provider, model, 
 to the run's audit trail - prompts may contain repo data, so keys are never logged.
 
 .env:
-  LLM_PROVIDER=auto | claude | gemini | groq | none     (auto = claude > gemini > groq, whichever has a key)
+  LLM_PROVIDER=auto | claude | gemini | ollama | groq | none
+               auto = claude > gemini > ollama: the first with a key, or a running local Ollama server.
+               Groq is no longer in the auto chain (free-tier rate limits); choose it explicitly to use it.
   ANTHROPIC_API_KEY=...   CLAUDE_MODEL=claude-opus-5-5   CLAUDE_EFFORT=medium
   GEMINI_API_KEY=...      GEMINI_MODEL=gemini-3.5-flash
+  OLLAMA_MODEL=qwen3:4b   OLLAMA_HOST=http://127.0.0.1:11434   OLLAMA_NUM_CTX=8192   (local, no key)
   GROQ_API_KEY=...        GROQ_MODEL=qwen/qwen3.8-27b
   LLM_CACHE=on            identical questions are answered from .cache/llm (repeatable, free demo reruns)
   <AGENT>_PROVIDER / <AGENT>_MODEL   give one agent a different provider/model, e.g. CRITIC_PROVIDER=gemini
@@ -23,7 +26,7 @@ from pathlib import Path
 from .. import config
 from .providers import PROVIDERS, ProviderError
 
-ORDER = ["claude", "gemini", "groq"]
+ORDER = ["claude", "gemini", "ollama"]          # "auto" chain; groq only when LLM_PROVIDER=groq
 CACHE = Path(__file__).resolve().parents[2] / ".cache" / "llm"
 
 
@@ -142,10 +145,11 @@ class Router:
 def check() -> list[dict]:
     """Ping every configured provider with a tiny JSON task (used by `guardian llm-check`)."""
     results = []
-    for name in ORDER:
+    for name in ORDER + ["groq"]:
         p = PROVIDERS[name]()
         if not p.available:
-            results.append({"provider": name, "status": "no key"})
+            results.append({"provider": name, "status": "Ollama server not running (install: ollama.com, then "
+                                                        f"`ollama pull {p.model}`)" if name == "ollama" else "no key"})
             continue
         t0 = time.time()
         try:

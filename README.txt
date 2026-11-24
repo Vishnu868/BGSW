@@ -15,7 +15,9 @@ SETUP (Windows, PowerShell)
   cd BGSW
   python scripts\setup.py            portable Node.js + demo repositories (checksum-verified)
   pip install -r requirements.txt    only needed for the Claude provider
-  copy .env.example .env             then add an AI key (Gemini / Groq / Claude) - optional
+  copy .env.example .env             optional: add a Claude / Gemini key
+  local AI, no key and no rate limit: install Ollama (https://ollama.com), then `ollama pull qwen3:4b`
+  pull requests: install the GitHub CLI and run `gh auth login` once
   python -m unittest discover -s tests
 Trivy and Grype are optional: put them in tools\trivy and tools\grype (or on PATH). Without them the scan
 runs on OSV alone.
@@ -38,8 +40,11 @@ Day 2 - Shield
   python -m guardian diff <repo>                   dependency graph before vs after the fixes
   python -m guardian report <repo>
   python -m guardian policy <repo>
+  python -m guardian pr <repo> [--dry-run] [--draft]   pull request with the approved, validated fixes
 Other
-  python -m guardian run <folder | git URL>        the whole loop (approval still interactive)
+  python -m guardian run <github-link> [--draft] [--no-pr]
+                                                   GitHub link in, pull request out: scan, analyze, plan,
+                                                   approve, apply, validate, report, then (after a yes) a PR
   python -m guardian llm-check                     test the configured AI providers
   python -m guardian ui                            control panel at http://127.0.0.1:8780: one button per step,
                                                    live output, answer box, kill switch, links to every result
@@ -60,6 +65,8 @@ PIPELINE
 4 Plan       guardian/remediate/planner.py    allow-listed actions, plan hash
 5 Approve    guardian/remediate/approval.py   human approval bound to the plan hash
 6 Apply      guardian/remediate/apply.py      sandbox git branch, kill switch, remediation.patch
+             guardian/remediate/publish.py    pull request: the approved fix replayed on the scanned commit,
+                                              pushed (to your fork if needed) and opened with `gh`
 7 Validate   guardian/validate/               rescan, before/after, next iteration
              guardian/report/diff.py          graph_diff.html: dependency graph before vs after, coloured
   Report     guardian/report/final.py, guardian/policy.py
@@ -122,7 +129,9 @@ SAFETY, PRIVACY, RESPONSIBLE AI
 - Keys only in .env (git-ignored); never printed or logged. The audit trail records provider/model/purpose only.
 - Every agent answer passes the symbolic verifier; AI text is labelled inference, separate from verified evidence.
 - Nothing changes without human approval bound to the plan hash; fixes only in a sandbox branch; kill switch:
-  create runs/<repo>/STOP. Nothing is pushed, merged or published by the tool.
+  create runs/<repo>/STOP. The only thing ever published is a pull request from `guardian pr` / `run`, and only
+  after the plan was approved, applied and validated and you answer "y" to the final question; it never merges.
+- With LLM_PROVIDER=ollama (or no key set) the agents run on a local model: no code or findings leave the computer.
 
 
 LIMITATIONS

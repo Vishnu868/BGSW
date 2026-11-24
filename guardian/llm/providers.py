@@ -1,8 +1,9 @@
-"""One interface, three providers. Each returns plain text; JSON parsing happens in guardian.llm.
+"""One interface, four providers. Each returns plain text; JSON parsing happens in guardian.llm.
 
   Claude  - official `anthropic` Python SDK (adaptive thinking, effort, server-side refusal fallback)
   Gemini  - Google Generative Language REST API (JSON response mode)
-  Groq    - Groq REST API, OpenAI-compatible chat completions (JSON object mode)
+  Ollama  - local model on this computer (default qwen3:4b): no key, no rate limit, nothing leaves the machine
+  Groq    - Groq REST API, OpenAI-compatible chat completions (JSON object mode); only when chosen explicitly
 """
 from __future__ import annotations
 
@@ -180,4 +181,56 @@ class Groq:
             return [m["id"] for m in json.loads(r.read()).get("data", [])]
 
 
-PROVIDERS = {"claude": Claude, "gemini": Gemini, "groq": Groq}
+class Ollama:
+    """Local model served by Ollama (https://ollama.com) at OLLAMA_HOST (default http://127.0.0.1:11434).
+
+    Uses /api/chat with JSON output mode. Thinking is switched off for Qwen 3 (`think: false`): the agents'
+    protocol needs one JSON object per turn, and on a 4 GB laptop GPU thinking tokens mostly cost time."""
+    name = "ollama"
+    _up: dict = {}            # host -> (checked_at, reachable) - checked at most every 30 s
+
+    def __init__(self) -> None:
+        self.host = config.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+        self.model = config.get("OLLAMA_MODEL", "qwen3:4b")
+        self.ctx = int(config.get("OLLAMA_NUM_CTX", "8192"))
+        self.timeout = int(config.get("OLLAMA_TIMEOUT", "300"))
+
+    @property
+    def available(self) -> bool:
+        """Usable when the Ollama server answers. Costs one local request, cached for 30 seconds."""
+        import time
+        at, ok = Ollama._up.get(self.host, (0.0, False))
+        if time.time() - at > 30:
+            try:
+                with urllib.request.urlopen(f"{self.host}/api/version", timeout=2) as r:
+                    ok = r.status == 200
+            except (urllib.error.URLError, OSError, ValueError):
+                ok = False
+            Ollama._up[self.host] = (time.time(), ok)
+        return ok
+
+    def complete(self, system: str, user: str, max_tokens: int = 4000) -> str:
+        body = {"model": self.model, "stream": False, "format": "json", "think": False,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                "options": {"temperature": 0.2, "num_ctx": self.ctx, "num_predict": min(max_tokens, 4000)}}
+        try:
+            data = _post(f"{self.host}/api/chat", body, {}, timeout=self.timeout, retries=1)
+        except ProviderError as e:
+            if "not found" in str(e) and "model" in str(e):
+                raise ProviderError(f"model {self.model} is not pulled - run: ollama pull {self.model}") from None
+            if "think" in str(e):          # older Ollama or a model without a thinking switch
+                body.pop("think")
+                data = _post(f"{self.host}/api/chat", body, {}, timeout=self.timeout, retries=1)
+            else:
+                raise
+        text = ((data.get("message") or {}).get("content") or "").strip()
+        if not text:
+            raise ProviderError(f"empty reply (done_reason={data.get('done_reason')})")
+        return text
+
+    def list_models(self) -> list[str]:
+        with urllib.request.urlopen(f"{self.host}/api/tags", timeout=10) as r:
+            return [m["name"] for m in json.loads(r.read()).get("models", [])]
+
+
+PROVIDERS = {"claude": Claude, "gemini": Gemini, "ollama": Ollama, "groq": Groq}

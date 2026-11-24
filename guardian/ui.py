@@ -30,7 +30,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 NAME = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
-INTERACTIVE = {"business", "review"}
+INTERACTIVE = {"business", "review", "pr"}     # these ask questions: the answer box writes to their stdin
 GIT_URL = re.compile(r"^https://(github\.com|gitlab\.com)/[\w.-]+/[\w.-]+/?$")
 
 
@@ -76,7 +76,7 @@ def command(step: str, repo: str, target: str, offline: bool) -> list[str]:
     simple = {"analyze": ["analyze", repo] + off, "business": ["business", repo], "review": ["review", repo],
               "plan": ["plan", repo] + off, "approve": ["approve", repo, "--web"], "apply": ["apply", repo],
               "validate": ["validate", repo], "diff": ["diff", repo], "report": ["report", repo],
-              "policy": ["policy", repo]}
+              "policy": ["policy", repo], "pr": ["pr", repo], "pr_preview": ["pr", repo, "--dry-run"]}
     if step not in simple:
         raise ValueError(f"unknown step {step}")
     return g + simple[step]
@@ -287,9 +287,9 @@ button:disabled{opacity:.45;cursor:not-allowed}button.alt{background:#e8ecf3;col
 const STEPS = [
  {g:"prep", t:"0 · Before you start", items:[
   ["tests","Run the 45+ automated tests","offline, under a second","rules"],
-  ["llm_check","Check the AI providers","which AI answers (Groq / Gemini / Claude)","ai"]]},
+  ["llm_check","Check the AI providers","which AI answers (Claude / Gemini / local Ollama qwen3:4b)","ai"]]},
  {g:"day1", t:"Day 1 · Eyes", items:[
-  ["scan","Scan","Discover + OSV + dynamic Trivy/Grype + supply-chain checks","rules", "target"],
+  ["scan","Scan a GitHub repository","paste a GitHub link (or pick a demo folder): discover + OSV + Trivy/Grype + supply-chain checks","rules", "target"],
   ["simulate_pr","Simulate a malicious PR","copy of the repo with 4 planted changes","rules"],
   ["scan_pr","Scan the PR against the baseline","catches tampering, mirror, install script, downgrade","rules"]]},
  {g:"brain", t:"Day 2 · Brain (prioritization)", items:[
@@ -306,14 +306,16 @@ const STEPS = [
   ["validate","Validate","full rescan, before vs after, verdict + graph diff","rules"],
   ["diff","Graph before vs after","rebuild graph_diff.html","rules"],
   ["report","Final report","guardian_report.html","rules"],
+  ["pr_preview","Preview the pull request","rebuild the approved fix on the scanned commit, write pr_preview.md, push nothing","rules"],
+  ["pr","Open the pull request","push the approved, validated fix to GitHub and open a PR (answer y to confirm)","human"],
   ["policy","Policy gate","CI gate (exit 1 = blocked)","rules"],
   ["backup","Backup results","zip of runs/ for the demo","rules"]]}];
 const $ = s => document.querySelector(s), esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-let state = {repos:[], targets:[], stop:{}}, since = 0, running = false, n = 0;
+let state = {repos:[], targets:[], stop:{}}, since = 0, running = false, n = 0, wantRepo = "";
 const tag = k => `<span class="tag ${k}">${k === "ai" ? "AI" : k === "human" ? "HUMAN" : "RULES"}</span>`;
 $("#steps").innerHTML = STEPS.map(G => `<div class="group ${G.g}"><h2>${G.t}</h2>` + G.items.map(([id, name, what, kind, extra]) =>
   `<div class="step" id="s-${id}"><span class="n">${++n}</span><div><b>${name}${tag(kind)}</b><small>${what}</small>
-   ${extra === "target" ? '<div style="margin-top:4px"><select id="target"></select></div>' : ""}</div>
+   ${extra === "target" ? '<div style="margin-top:4px"><input type="text" id="ghlink" placeholder="https://github.com/owner/repo" style="width:100%"></div><div style="margin-top:4px"><select id="target"></select></div>' : ""}</div>
    ${id === "killswitch" ? '<span><button data-k="1">On</button> <button class="alt" data-k="0">Off</button></span>'
                          : `<button data-step="${id}">Run</button>`}</div>`).join("") + "</div>").join("");
 async function api(path, body) {
@@ -322,11 +324,11 @@ async function api(path, body) {
 }
 async function refresh() {
   state = await api("/api/state");
-  const cur = $("#repo").value || "juice-shop";
+  const cur = (wantRepo && state.repos.includes(wantRepo)) ? wantRepo : ($("#repo").value || "juice-shop");
   $("#repo").innerHTML = state.repos.map(r => `<option ${r === cur ? "selected" : ""}>${r}</option>`).join("") || "<option value=''>(scan first)</option>";
   const t = $("#target"), tv = t.value || "targets/juice-shop";
   t.innerHTML = state.targets.map(x => `<option value="${x.path}" ${x.path === tv ? "selected" : ""}>${x.label}</option>`).join("")
-    + `<option value="url">GitHub link…</option>`;
+    + `<option value="url">another GitHub link…</option>`;
   links();
 }
 function links() {
@@ -347,8 +349,9 @@ function setRunning(v) {
 async function run(step) {
   const real = step === "apply2" ? "apply" : step;
   let target = "";
-  if (real === "scan") { target = $("#target").value;
-    if (target === "url") { target = prompt("GitHub link, e.g. https://github.com/snyk-labs/nodejs-goof") || ""; if (!target) return; } }
+  if (real === "scan") { target = $("#ghlink").value.trim() || $("#target").value;
+    if (target === "url") { target = prompt("GitHub link, e.g. https://github.com/snyk-labs/nodejs-goof") || ""; if (!target) return; }
+    const m = target.match(/github\.com[/:][\w.-]+\/([\w.-]+?)(?:\.git)?\/?$/); wantRepo = m ? m[1] : target.split("/").pop(); }
   if (step === "apply") { try { await api("/api/clear-approval", {repo: $("#repo").value}); } catch (e) {} }
   try { await api("/api/run", {step: real, repo: real === "scan" ? "" : $("#repo").value, target, offline: $("#offline").checked}); }
   catch (e) { $("#out").textContent += `\n[not started: ${e.message}]\n`; return; }

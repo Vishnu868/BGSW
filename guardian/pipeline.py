@@ -18,18 +18,57 @@ ROOT = Path(__file__).resolve().parents[1]
 NPM = ROOT / "tools" / "node" / "npm.cmd"
 
 
+GITHUB = re.compile(r"^(?:https://github\.com/|git@github\.com:)([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+
+
+def parse_github(url: str) -> tuple[str, str] | None:
+    """'https://github.com/owner/repo(.git)' or 'git@github.com:owner/repo.git' -> (owner, repo); else None."""
+    m = GITHUB.match((url or "").strip())
+    return (m.group(1), m.group(2)) if m else None
+
+
+def _git_out(repo: Path, *args) -> str:
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def fetch(target: str, workdir: Path) -> Path:
-    """Local path -> itself. Git URL -> shallow clone into targets/ (read-only use)."""
+    """Local path -> itself. Git URL -> shallow clone into targets/ (read-only use).
+    An existing clone of the same repository is refreshed to the remote's current commit, so a GitHub link always
+    scans (and later opens its pull request against) what is on GitHub now."""
     if re.match(r"^(https?://|git@)", target):
-        name = re.sub(r"\.git$", "", target.rstrip("/").split("/")[-1])
+        gh = parse_github(target)
+        name = gh[1] if gh else re.sub(r"\.git$", "", target.rstrip("/").split("/")[-1])
         dest = workdir / name
+        cur = parse_github(_git_out(dest, "remote", "get-url", "origin")) if dest.exists() else None
+        if gh and cur and tuple(x.lower() for x in cur) != tuple(x.lower() for x in gh):
+            dest = workdir / f"{gh[0]}-{gh[1]}"           # same repo name, different owner: keep both
         if not dest.exists():
             subprocess.run(["git", "clone", "--depth", "1", target, str(dest)], check=True)
+        elif (dest / ".git").exists():
+            r = subprocess.run(["git", "-C", str(dest), "fetch", "-q", "--depth", "1", "origin", "HEAD"],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                subprocess.run(["git", "-C", str(dest), "reset", "-q", "--hard", "FETCH_HEAD"], check=True)
         return dest
     p = Path(target).resolve()
     if not p.is_dir():
         raise SystemExit(f"not a folder or git URL: {target}")
     return p
+
+
+def source_info(repo: Path) -> dict:
+    """Where the scanned code came from: GitHub owner/name, branch and exact commit (empty for a plain folder).
+    The pull-request step uses it to open the PR against the same repository and commit."""
+    url = _git_out(repo, "remote", "get-url", "origin")
+    gh = parse_github(url)
+    if not gh:
+        return {"type": "folder", "url": url}
+    branch = _git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    remote_head = _git_out(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    return {"type": "github", "url": f"https://github.com/{gh[0]}/{gh[1]}", "owner": gh[0], "name": gh[1],
+            "full_name": f"{gh[0]}/{gh[1]}", "commit": _git_out(repo, "rev-parse", "HEAD"),
+            "branch": remote_head.split("/", 1)[1] if remote_head.startswith("origin/") else (branch if branch != "HEAD" else "")}
 
 
 def ensure_npm_locks(repo: Path, log) -> list[str]:
@@ -118,7 +157,7 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
             "files": {**inv.files_seen, "dockerfiles": [p.relative_to(repo).as_posix() for p in inv.dockerfiles],
                       "compose": [p.relative_to(repo).as_posix() for p in inv.compose_files],
                       "workflows": [p.relative_to(repo).as_posix() for p in inv.workflows]},
-            "generated_lockfiles": generated}
+            "generated_lockfiles": generated, "source": source_info(repo)}
     (out / "sbom.cdx.json").write_text(json.dumps(sbom_out.cyclonedx(g, findings, meta), indent=1), encoding="utf-8")
     report = text_report.findings_json(g, findings, meta, changes)
     (out / "findings.json").write_text(json.dumps(report, indent=1), encoding="utf-8")

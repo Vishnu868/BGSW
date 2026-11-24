@@ -349,4 +349,4 @@ class ControlPanelTest(unittest.TestCase):
                 ui.command(bad[0], bad[1], bad[2], False)
         self.assertEqual(ui.command("scan", "", "https://github.com/snyk-labs/nodejs-goof", False)[-1],
                          "https://github.com/snyk-labs/nodejs-goof")
-        self.assertEqual(ui.INTERACTIVE, {"business", "review"})   # only these get an input pipe
+        self.assertEqual(ui.INTERACTIVE, {"business", "review", "pr"})   # only these get an input pipe (pr asks y/N)
