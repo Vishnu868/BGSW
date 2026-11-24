@@ -40,10 +40,17 @@ def analysis_view(a: dict) -> dict:
         by_key[it["key"]] = {"id": it["id"], "priority": it["priority"], "score": it["score"], "base_score": it["base_score"],
                              "headline": it["headline"], "reachability": it["reachability"]["status"],
                              "ai": it.get("ai"), "triage_reason": it.get("triage_reason"), "business": it.get("business"),
-                             "case": case}
+                             "case": case, "ns": _ns_view(it.get("neurosymbolic"))}
     return {"llm": a["llm"], "counts": a["counts"], "agents": a["agents"], "summary": a["summary"],
             "review_queue": a["review_queue"], "by_key": by_key, "business": a.get("business_context"),
             "business_facts": a.get("business_facts", [])}
+
+
+def _ns_view(n: dict | None) -> dict | None:
+    if not n:
+        return None
+    return {k: n[k] for k in ("score", "priority", "confidence", "confidence_label", "why", "explanation", "previous")} | \
+        {"dimensions": {k: {"score": v["score"], "weight": v["weight"]} for k, v in n["dimensions"].items() if v}}
 
 
 def render(data: dict) -> str:

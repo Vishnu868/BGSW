@@ -1,0 +1,147 @@
+{
+  "schema": "guardian.neurosymbolic_rules/v1",
+  "description": "Rules of the Neurosymbolic Prioritizer (agent 6). It receives the verified outputs of the Lead, Vulnerability Analyst, Supply-Chain Forensics, Critic and Business Context agents plus the scan's deterministic facts, scores every risk on five dimensions, applies hard gates, and returns score + priority + confidence + explanation. Every number here is reviewable in a PR; nothing is decided by a model.",
+
+  "weights": {
+    "threat": 0.30,
+    "production": 0.20,
+    "business_loss": 0.25,
+    "supply_chain": 0.15,
+    "blast_radius": 0.10
+  },
+  "weights_note": "supply_chain only counts when the item has a supply-chain signal (otherwise the remaining weights are renormalised), so an ordinary CVE is not diluted by a dimension that does not apply to it.",
+
+  "threat": {
+    "parts": {"severity": 0.40, "exploitability": 0.35, "exposure": 0.25},
+    "severity_by_level": {"critical": 95, "high": 75, "medium": 50, "low": 25, "info": 5},
+    "exploitability": {
+      "kev": 100,
+      "malicious_or_tampered": 100,
+      "epss_high": {"min": 0.5, "value": 90},
+      "epss_medium": {"min": 0.1, "value": 70},
+      "epss_low": {"max": 0.01, "value": 15},
+      "analyst_exploitable_yes": 75,
+      "analyst_exploitable_no_cap": 30,
+      "automatable_vector": 60,
+      "install_script": 70,
+      "ci_injection": 85,
+      "unknown": 40
+    },
+    "exposure": {
+      "internet_facing_and_reachable": 100,
+      "internet_facing_not_reachable": 50,
+      "internal_and_reachable": 50,
+      "ci_pipeline": 70,
+      "container_image": 60,
+      "dev_only": 15,
+      "unknown": 40
+    }
+  },
+
+  "production": {
+    "by_reachability": {"imported": 100, "via-used-parent": 85, "unknown": 60, "used-in-scripts": 40,
+                        "not-imported": 25, "via-unused-parent": 20},
+    "dev_only": 10,
+    "dev_only_install_script": 50,
+    "container_image": 90,
+    "ci_pipeline": 70,
+    "install_script_production": 80,
+    "installed_in_production": 80,
+    "analyst_exploitable_yes_bonus": 10,
+    "specialists_false_positive_penalty": 30
+  },
+
+  "business_loss": {
+    "description": "Worst plausible loss if the risk is exploited, from the data the affected project handles (Business Context agent + rules, human-confirmable) and what the vulnerability breaks (CVSS C/I/A). Score -> loss class.",
+    "data_breach": {"payment": 100, "credentials": 95, "personal": 80, "auth_tokens": 75, "none": 35},
+    "fraud_tampering": {"payment": 100, "credentials": 85, "auth_tokens": 80, "personal": 60, "none": 40},
+    "outage": {"internet_facing": 70, "internal": 35},
+    "full_compromise": 100,
+    "unknown_impact_factor": 0.8,
+    "unknown_impact_note": "findings without a CVSS vector (config, CI, container) assume data_breach[top data class] x unknown_impact_factor x (threat.severity_by_level[severity] / 100)",
+    "classes": [
+      {"min": 90, "class": "catastrophic", "means": "card or credential data exposed or altered: fines (PCI DSS, GDPR), card reissue, fraud losses, mandatory breach notification"},
+      {"min": 75, "class": "severe", "means": "personal data or sessions exposed: regulatory reporting, customer notification, account takeover clean-up"},
+      {"min": 55, "class": "significant", "means": "customer-facing outage or data integrity loss: lost revenue during downtime, incident response, SLA credits"},
+      {"min": 35, "class": "moderate", "means": "internal service impact or limited data: engineering time, delayed releases"},
+      {"min": 0, "class": "minor", "means": "no sensitive data and no customer impact found"}
+    ]
+  },
+
+  "supply_chain": {
+    "description": "Integrity of the artifact itself (is it what it claims to be?). Rules are matched by finding rule id prefix; the highest match wins.",
+    "by_rule": {
+      "osv:MAL-": 100,
+      "diff.tampered": 95,
+      "packages.repo-name-mismatch": 90,
+      "cicd.script-injection": 85,
+      "lockfile.untrusted-registry": 80,
+      "cicd.prt-checkout": 75,
+      "diff.install-script-added": 75,
+      "lockfile.insecure-url": 75,
+      "container.curl-pipe-sh": 70,
+      "packages.lookalike-name": 65,
+      "container.remote-add": 60,
+      "diff.downgrade": 60,
+      "lockfile.git-source": 60,
+      "packages.install-script": 60,
+      "cicd.unpinned-action": 55,
+      "container.privileged": 55,
+      "lockfile.integrity-conflict": 55,
+      "cicd.unpinned-docker": 50,
+      "cicd.write-all": 50,
+      "container.eol": 50,
+      "lockfile.no-integrity": 50,
+      "cicd.default-permissions": 45,
+      "container.unpinned": 45,
+      "packages.low-downloads": 45,
+      "container.root-user": 35,
+      "lockfile.unpinned": 35,
+      "lockfile.drift": 30,
+      "lockfile.missing": 30,
+      "lockfile.sha": 30,
+      "diff.added": 20
+    },
+    "allow_listed_install_script": 25,
+    "forensics_confirmed_bonus": 10,
+    "forensics_false_positive_penalty": 30
+  },
+
+  "blast_radius": {
+    "repo_level": 90,
+    "direct": 50,
+    "via_one": 40,
+    "via_two_or_three": 60,
+    "via_four_plus": 80,
+    "many_findings_bonus": {"min_findings": 3, "value": 10},
+    "multiple_projects_bonus": 10
+  },
+
+  "agent_adjustment": {
+    "description": "The Lead's triage move (already bounded to ±20 by the verifier) counts at half strength, capped here, so the agents' judgement shapes but never dominates the rule score.",
+    "lead_factor": 0.5,
+    "max": 10
+  },
+
+  "gates": {
+    "confirmed_compromise": {"priority": "P1", "min_score": 95, "action": "block"},
+    "kev_production_internet": {"priority": "P1", "min_score": 85},
+    "regulated_data_breach": {"priority": "P2", "min_score": 65, "min_cvss": 7.0, "data": ["payment", "credentials"]},
+    "human_confirmed": {"priority": "P2", "min_score": 65},
+    "suspected_lookalike": {"priority": "P2", "min_score": 65},
+    "human_dismissed": {"priority": "P4", "max_score": 20},
+    "dev_only_unreachable": {"priority": "P4", "max_score": 30},
+    "agents_agree_false_positive": {"priority": "P3", "max_score": 55, "min_confidence": 0.6}
+  },
+
+  "confidence": {
+    "source_weight": {"verified": 0.95, "human": 1.0, "rules": 0.75, "default": 0.4},
+    "critic_disagrees": -0.2,
+    "critic_agrees": 0.05,
+    "specialists_conflict": -0.1,
+    "scanner_consensus": {"min_scanners": 2, "value": 0.05},
+    "labels": [{"min": 0.75, "label": "high"}, {"min": 0.55, "label": "medium"}, {"min": 0, "label": "low"}],
+    "review_below": 0.55,
+    "review_priorities": ["P1", "P2"]
+  }
+}
