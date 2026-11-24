@@ -136,3 +136,38 @@ class LlmTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PriorRulesTest(unittest.TestCase):
+    """Review fixes: version ordering, compromise indicators, dev-only exception, tie-break, explicit zero lines."""
+
+    def _finding(self, **kw):
+        f = {"id": "F-1", "component": "pkg:npm/a@1.0.0", "rule": "osv.vuln", "category": "1.1", "severity": "high",
+             "title": "t", "recommendation": "", "evidence": [], "data": {"cvss": 9.8, "cve": "CVE-1", "fixed": "1.2.0"},
+             "component_detail": {"name": "a", "version": "1.0.0", "direct": False, "dev_only": False}}
+        f.update(kw)
+        return f
+
+    def test_version_key(self):
+        from guardian.analyze.prioritize import version_key
+        self.assertEqual(sorted(["4.17.21", "4.17.21-beta", "4.17.3", "10.0"], key=version_key),
+                         ["4.17.3", "4.17.21-beta", "4.17.21", "10.0"])
+
+    def test_dev_only_compromise_keeps_score(self):
+        from guardian.analyze.prioritize import build_items
+        cd = {"name": "a", "version": "1.0.0", "direct": False, "dev_only": True}
+        squat = self._finding(category="1.3", rule="pkg.typosquat", data={}, component_detail=cd)
+        vuln = self._finding(id="F-2", component="pkg:npm/b@1.0.0", component_detail=dict(cd, name="b"))
+        items = {i["key"]: i for i in build_items({"findings": [squat, vuln]}, {}, set(), {})}
+        self.assertEqual(items["pkg:npm/a@1.0.0"]["score"], 80.0)     # high 70 + compromise 10, no -25
+        self.assertEqual(items["pkg:npm/b@1.0.0"]["score"], 73.0)     # CVSS 98 - 25 dev-only
+        reasons = " ".join(f["reason"] for f in items["pkg:npm/a@1.0.0"]["factors"])
+        self.assertIn("reachability unknown: no adjustment", reasons)
+
+    def test_tie_break_prefers_kev(self):
+        from guardian.analyze.prioritize import build_items
+        a = self._finding(title="a-first", data={"cvss": 9.8, "cve": "CVE-A"})
+        b = self._finding(id="F-2", component="pkg:npm/b@1.0.0", title="b-second", data={"cvss": 9.8, "cve": "CVE-B"},
+                          component_detail={"name": "b", "version": "1.0.0", "direct": False, "dev_only": False})
+        items = build_items({"findings": [a, b]}, {}, {"CVE-B"}, {})
+        self.assertEqual(items[0]["key"], "pkg:npm/b@1.0.0")      # both capped at 100; KEV wins over the alphabet

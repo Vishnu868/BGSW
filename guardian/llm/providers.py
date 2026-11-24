@@ -17,7 +17,7 @@ class ProviderError(Exception):
     """Raised when a provider cannot answer; the router then tries the next provider."""
 
 
-def _post(url: str, body: dict, headers: dict, timeout: int = 120, retries: int = 3) -> dict:
+def _post(url: str, body: dict, headers: dict, timeout: int = 120, retries: int = 5) -> dict:
     import time
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "User-Agent": "supply-chain-guardian/0.2",
@@ -30,7 +30,7 @@ def _post(url: str, body: dict, headers: dict, timeout: int = 120, retries: int 
             detail = e.read().decode(errors="replace")[:300]
             if e.code in (429, 500, 502, 503) and attempt < retries:     # free tiers rate-limit: back off briefly
                 wait = float(e.headers.get("retry-after") or 0) or 2 * (attempt + 1)
-                time.sleep(min(wait, 20))
+                time.sleep(min(wait + 1, 60))       # per-minute token limits reset within a minute
                 continue
             raise ProviderError(f"HTTP {e.code}: {detail}") from None
         except (urllib.error.URLError, TimeoutError) as e:
@@ -96,7 +96,7 @@ class Gemini:
 
     def __init__(self) -> None:
         self.key = config.get("GEMINI_API_KEY") or config.get("GOOGLE_API_KEY")
-        self.model = config.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = config.get("GEMINI_MODEL", "gemini-3.5-flash")
 
     @property
     def available(self) -> bool:
@@ -131,21 +131,44 @@ class Groq:
 
     def __init__(self) -> None:
         self.key = config.get("GROQ_API_KEY")
-        self.model = config.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+        self.model = config.get("GROQ_MODEL", "qwen/qwen3.8-27b")
 
     @property
     def available(self) -> bool:
         return bool(self.key)
 
     def complete(self, system: str, user: str, max_tokens: int = 8000) -> str:
-        body = {"model": self.model, "temperature": 0.2, "max_tokens": max_tokens,
+        # free tier counts max_tokens against tokens-per-minute (8k on gpt-oss-120b), so ask for what an answer needs
+        body = {"model": self.model, "temperature": 0.2, "max_tokens": min(max_tokens, int(config.get("GROQ_MAX_TOKENS", "2000"))),
                 "response_format": {"type": "json_object"},
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-        data = _post("https://api.groq.com/openai/v1/chat/completions", body, {"Authorization": f"Bearer {self.key}"})
+        if "gpt-oss" in self.model:
+            body["reasoning_effort"] = "low"
+        url, auth = "https://api.groq.com/openai/v1/chat/completions", {"Authorization": f"Bearer {self.key}"}
         try:
-            return data["choices"][0]["message"]["content"]
+            data = _post(url, body, auth)
+        except ProviderError as e:
+            if not any(s in str(e) for s in ("Failed to validate JSON", "json_validate_failed", "called a tool")):
+                raise
+            # gpt-oss likes native function calling; our agents use a plain-JSON tool protocol. Ask again in
+            # free-text mode and accept either a JSON reply or a native tool call (converted below).
+            body.pop("response_format", None)
+            body["messages"][0]["content"] = system + "\nReply with one JSON object as plain text. Do not use native function calls."
+            data = _post(url, body, auth)
+        try:
+            msg = data["choices"][0]["message"]
         except (KeyError, IndexError):
             raise ProviderError(f"unexpected response: {str(data)[:200]}") from None
+        if msg.get("tool_calls") and not (msg.get("content") or "").strip():
+            call = msg["tool_calls"][0]["function"]
+            try:
+                args = json.loads(call.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            return json.dumps({"tool": call.get("name", ""), "args": args, "why": "native tool call (converted)"})
+        if not (msg.get("content") or "").strip():
+            raise ProviderError(f"empty reply (finish_reason={data['choices'][0].get('finish_reason')})")
+        return msg["content"]
 
     def list_models(self) -> list[str]:
         req = urllib.request.Request("https://api.groq.com/openai/v1/models",

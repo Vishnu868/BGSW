@@ -5,8 +5,8 @@ to the run's audit trail - prompts may contain repo data, so keys are never logg
 .env:
   LLM_PROVIDER=auto | claude | gemini | groq | none     (auto = claude > gemini > groq, whichever has a key)
   ANTHROPIC_API_KEY=...   CLAUDE_MODEL=claude-opus-5-5   CLAUDE_EFFORT=medium
-  GEMINI_API_KEY=...      GEMINI_MODEL=gemini-2.5-flash
-  GROQ_API_KEY=...        GROQ_MODEL=llama-3.3-70b-versatile
+  GEMINI_API_KEY=...      GEMINI_MODEL=gemini-3.5-flash
+  GROQ_API_KEY=...        GROQ_MODEL=qwen/qwen3.8-27b
   LLM_CACHE=on            identical questions are answered from .cache/llm (repeatable, free demo reruns)
   <AGENT>_PROVIDER / <AGENT>_MODEL   give one agent a different provider/model, e.g. CRITIC_PROVIDER=gemini
 """
