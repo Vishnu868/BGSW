@@ -54,7 +54,9 @@ def ensure_npm_locks(repo: Path, log) -> list[str]:
 
 def run(target: str, out_root: Path, offline: bool = False, baseline: Path | None = None,
         gen_locks: bool = True, scanners: str = "auto", images: bool = False, log=print) -> Path:
-    """scanners: "auto" (OSV + every installed external scanner), "osv", or e.g. "osv,trivy,grype".
+    """scanners: "auto" (dynamic: OSV first, then Trivy/Grype only where they add something - confirm OSV's flagged
+    components, scan folders outside OSV coverage, full cross-check for small repos), "full" (all tools on the whole
+    repository), "osv", or e.g. "osv,trivy,grype".
     images: also let Trivy scan the container base images named in Dockerfiles (downloads image layers)."""
     from .detect import cicd, container, lockfile, osv, packages
     from .detect import scanners as ext
@@ -83,13 +85,15 @@ def run(target: str, out_root: Path, offline: bool = False, baseline: Path | Non
     log("[2/4] Detect    vulnerabilities (OSV.dev)")
     findings, osv_status = osv.scan(g, offline=offline)
     log(f"      OSV: {osv_status['vulnerable_components']} vulnerable components, {osv_status['advisories']} advisories")
-    wanted = [t for t in ("trivy", "grype") if (scanners == "auto" and ext.binary(t)) or t in scanners.split(",")]
-    scanner_status = {"osv": "ok", "ran": ["osv"]}
-    if wanted:
-        log(f"      cross-check with {' + '.join(ext.NAMES[t] for t in wanted)} (independent scanners)")
-        imgs = sorted({c.name for c in g.nodes.values() if c.kind == "container"}) if images else []
+    # dynamic scanner selection: what Discover + OSV found decides which external scanner looks at what
+    plan = ext.make_plan(g, repo, findings, scanners)
+    for line in ext.describe(plan):
+        log(f"      {line}")
+    scanner_status = {"osv": "ok", "ran": ["osv"], "plan": {k: v for k, v in plan.items() if k != "flagged_ids"}}
+    imgs = sorted({c.name for c in g.nodes.values() if c.kind == "container"}) if images else []
+    if plan["steps"] or imgs:
         extra, scanner_status = ext.scan(g, repo, findings, repo_id, out / "scanners", offline=offline,
-                                         use=tuple(wanted), images=imgs, log=log)
+                                         plan=plan, images=imgs, log=log)
         findings += extra
     log("      supply-chain checks: packages, lockfiles, containers, CI/CD")
     findings += packages.scan(g, inv, offline=offline)

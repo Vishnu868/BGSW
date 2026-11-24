@@ -171,3 +171,37 @@ class PriorRulesTest(unittest.TestCase):
                           component_detail={"name": "b", "version": "1.0.0", "direct": False, "dev_only": False})
         items = build_items({"findings": [a, b]}, {}, {"CVE-B"}, {})
         self.assertEqual(items[0]["key"], "pkg:npm/b@1.0.0")      # both capped at 100; KEV wins over the alphabet
+
+
+class ScanPlanTest(unittest.TestCase):
+    """Dynamic scanner selection: decided from what Discover + OSV found, every step with a reason."""
+
+    def _graph(self, n):
+        from types import SimpleNamespace as NS
+        return NS(nodes={f"npm:p{i}@1.0.0": NS(kind="library") for i in range(n)})
+
+    def _osv(self, cid):
+        return Finding("1.2", "high", "x", component=cid, rule="osv", data={})
+
+    def test_large_repo_confirms_flagged_only(self):
+        repo = Path(tempfile.mkdtemp())
+        plan = scanners.make_plan(self._graph(1000), repo, [self._osv("npm:p1@1.0.0")], "auto", {"trivy", "grype"})
+        self.assertEqual({s["kind"] for s in plan["steps"]}, {"confirm"})
+        self.assertEqual(plan["flagged_ids"], ["npm:p1@1.0.0"])
+        self.assertTrue(any("whole-repository" in s for s in plan["skipped"]))
+
+    def test_gap_folders_get_external_scanners(self):
+        repo = Path(tempfile.mkdtemp())
+        write(repo, "rust/Cargo.lock", "")
+        write(repo, "node_modules/x/Cargo.lock", "")             # dependency folders are not project manifests
+        plan = scanners.make_plan(self._graph(1000), repo, [], "auto", {"trivy"})
+        gaps = [s for s in plan["steps"] if s["kind"] == "gap"]
+        self.assertEqual(len(gaps), 1)
+        self.assertIn("crates.io", gaps[0]["why"])
+
+    def test_small_repo_and_explicit_modes(self):
+        repo = Path(tempfile.mkdtemp())
+        self.assertEqual({s["kind"] for s in scanners.make_plan(self._graph(5), repo, [], "auto", {"trivy", "grype"})["steps"]}, {"full"})
+        self.assertEqual(scanners.make_plan(self._graph(1000), repo, [], "osv", {"trivy", "grype"})["steps"], [])
+        self.assertEqual(len(scanners.make_plan(self._graph(1000), repo, [], "full", {"trivy", "grype"})["steps"]), 2)
+        self.assertEqual(scanners.make_plan(self._graph(1000), repo, [], "auto", set())["steps"], [])

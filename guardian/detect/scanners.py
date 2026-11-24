@@ -117,6 +117,94 @@ def run_grype(target: str, out_file: Path, offline: bool) -> tuple[list[dict], s
     return res, f"ok ({len(res)} results)"
 
 
+# ------------------------------------------------------------- scan planning ---
+# Lock / manifest files that neither our readers nor OSV can use. Trivy and Grype can, so these folders are the
+# "coverage gaps" an external scanner must look at.
+GAP_FILES = {"Cargo.lock": "crates.io", "conan.lock": "ConanCenter", "conanfile.txt": "ConanCenter",
+             "pubspec.lock": "Pub", "mix.lock": "Hex", "Package.resolved": "SwiftURL", "Podfile.lock": "CocoaPods",
+             "gradle.lockfile": "Maven (Gradle)"}
+SKIP_DIRS = {".git", "node_modules", "vendor", "target", "dist", "build", ".venv", "venv", "__pycache__", ".gradle"}
+SMALL_REPO = 200          # below this many components a full cross-check costs seconds, so it is always done
+
+
+def find_gaps(repo: Path) -> dict[str, list[str]]:
+    """{folder: [gap files]} for manifests outside our readers' + OSV's coverage."""
+    gaps: dict[str, list[str]] = {}
+    for root, dirs, files in os.walk(repo):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        hit = sorted(f for f in files if f in GAP_FILES)
+        if hit:
+            gaps[root] = hit
+    return gaps
+
+
+def make_plan(graph, repo: Path, findings: list[Finding], mode: str = "auto", available: set | None = None) -> dict:
+    """Decide which scanner looks at what, from what Discover + OSV already found. Every decision has a reason.
+    mode: auto (dynamic) | full (all tools on the whole repository) | osv | a list such as "osv,trivy,grype"."""
+    available = set(available if available is not None else {t for t in ("trivy", "grype") if binary(t)})
+    libs = sum(1 for c in graph.nodes.values() if c.kind == "library")
+    flagged = sorted({f.component for f in findings if f.rule == "osv"})
+    gaps = find_gaps(repo)
+    plan = {"mode": mode, "components": libs, "flagged": len(flagged), "flagged_ids": flagged,
+            "gaps": {Path(d).relative_to(repo).as_posix() or ".": fs for d, fs in gaps.items()}, "steps": [], "skipped": []}
+    if mode != "auto":
+        tools = [t for t in ("trivy", "grype") if mode == "full" or t in mode.split(",")]
+        for t in tools:
+            if t in available:
+                plan["steps"].append({"tool": t, "kind": "full", "target": str(repo),
+                                      "why": f"--scanners {mode}: whole repository"})
+            else:
+                plan["skipped"].append(f"{NAMES[t]}: not installed")
+        if not tools:
+            plan["skipped"].append("external scanners: --scanners osv (OSV only)")
+        return plan
+    ext = [t for t in ("trivy", "grype") if t in available]
+    if not ext:
+        plan["skipped"].append("Trivy/Grype not installed: OSV only")
+        return plan
+    if libs + len(gaps) and libs < SMALL_REPO:
+        for t in ext:
+            plan["steps"].append({"tool": t, "kind": "full", "target": str(repo),
+                                  "why": f"small repository ({libs} components): full cross-check costs seconds"})
+        return plan
+    if flagged:
+        for t in ext:
+            plan["steps"].append({"tool": t, "kind": "confirm", "target": "",
+                                  "why": f"confirm the {len(flagged)} components OSV flagged (of {libs})"})
+    else:
+        plan["skipped"].append(f"confirmation: OSV flagged none of the {libs} components")
+    for d, fs in gaps.items():
+        rel = Path(d).relative_to(repo).as_posix() or "."
+        ecos = sorted({GAP_FILES[f] for f in fs})
+        for t in ext:
+            plan["steps"].append({"tool": t, "kind": "gap", "target": d,
+                                  "why": f"{rel}/: {', '.join(fs)} ({', '.join(ecos)}) - outside OSV and our readers"})
+    if not gaps:
+        plan["skipped"].append("whole-repository scan by Trivy/Grype: every manifest is covered by our readers + OSV "
+                               "(use --scanners full for a complete second opinion)")
+    return plan
+
+
+def describe(plan: dict) -> list[str]:
+    """Console lines for the plan: what runs, on what, and why; what is skipped."""
+    lines = [f"scan plan ({plan['mode']}): {plan['components']} components, {plan['flagged']} flagged by OSV, "
+             f"{len(plan['gaps'])} folder(s) outside OSV coverage"]
+    seen = {}
+    for st in plan["steps"]:
+        seen.setdefault((st["kind"], st["why"]), []).append(NAMES[st["tool"]])
+    for (_, why), tools in seen.items():
+        lines.append(f"  + {' + '.join(tools)}: {why}")
+    lines += [f"  - skipped {x}" for x in plan["skipped"]]
+    return lines
+
+
+def _subset_sbom(full: dict, keep: set) -> dict:
+    sub = dict(full)
+    sub["components"] = [c for c in full.get("components", []) if c.get("bom-ref") in keep]
+    sub["dependencies"], sub["vulnerabilities"] = [], []
+    return sub
+
+
 # ------------------------------------------------------------------ merging ---
 def _words(text: str) -> set:
     import re
@@ -128,39 +216,61 @@ def _key(eco: str, name: str, version: str) -> tuple:
 
 
 def scan(graph, repo: Path, findings: list[Finding], repo_id: str, out_dir: Path, offline: bool = False,
-         use: tuple = ("trivy", "grype"), images: list[str] | None = None, log=print) -> tuple[list[Finding], dict]:
+         plan: dict | None = None, images: list[str] | None = None, log=print) -> tuple[list[Finding], dict]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    status = {"osv": "ok"}
+    plan = plan or make_plan(graph, repo, findings, "full")
+    status: dict = {"osv": "ok", "plan": {k: v for k, v in plan.items() if k != "flagged_ids"}}
     results: list[dict] = []
-    # our own resolved component list as a CycloneDX SBOM: the fallback input when a scanner cannot resolve the
-    # repository itself (e.g. Maven projects without network access to Maven Central)
+    # our own resolved component list as a CycloneDX SBOM: the input for confirmation, and the fallback when a
+    # scanner cannot resolve the repository itself (e.g. Maven projects without network access to Maven Central)
     from ..report.sbom import cyclonedx
+    full_sbom = cyclonedx(graph, [], {"repo": repo.name})
     sbom_in = out_dir / "input.cdx.json"
-    sbom_in.write_text(json.dumps(cyclonedx(graph, [], {"repo": repo.name})), encoding="utf-8")
+    sbom_in.write_text(json.dumps(full_sbom), encoding="utf-8")
+    confirm_in = out_dir / "confirm.cdx.json"
+    if any(st["kind"] == "confirm" for st in plan["steps"]):
+        confirm_in.write_text(json.dumps(_subset_sbom(full_sbom, set(plan["flagged_ids"]))), encoding="utf-8")
     has_libs = any(c.kind == "library" for c in graph.nodes.values())
-    for tool in use:
+    parts: dict[str, list[str]] = {}
+    modes: dict[str, set] = {}
+    used = []
+    for n, st in enumerate(plan["steps"]):
+        tool, kind = st["tool"], st["kind"]
+        used.append(tool)
         t0 = time.time()
-        fn = run_trivy if tool == "trivy" else run_grype
-        target = str(repo) if tool == "trivy" else f"dir:{repo}"
+        out_file = out_dir / f"{tool}-{kind}-{n}.json"
         try:
-            res, st = fn(target, out_dir / f"{tool}.json", offline)
-            if (not res) and has_libs:              # fs mode failed or saw nothing -> scan our SBOM instead
-                res2, st2 = (run_trivy(str(sbom_in), out_dir / f"{tool}.json", offline, sbom=True) if tool == "trivy"
-                             else run_grype(f"sbom:{sbom_in}", out_dir / f"{tool}.json", offline))
-                if st2.startswith("ok"):
-                    res, st = res2, f"{st2} via our SBOM (filesystem mode: {st[:60]})"
+            if kind == "confirm":
+                res, s_ = (run_trivy(str(confirm_in), out_file, offline, sbom=True) if tool == "trivy"
+                           else run_grype(f"sbom:{confirm_in}", out_file, offline))
+                for r in res:
+                    r["file"] = "OSV-flagged components (SBOM)"
+                modes.setdefault(tool, set()).add("sbom")
+            else:
+                target = st["target"]
+                res, s_ = (run_trivy(target, out_file, offline) if tool == "trivy" else run_grype(f"dir:{target}", out_file, offline))
+                modes.setdefault(tool, set()).add("fs")
+                if kind == "full" and not res and has_libs:   # fs mode failed or saw nothing -> scan our SBOM instead
+                    res2, s2 = (run_trivy(str(sbom_in), out_file, offline, sbom=True) if tool == "trivy"
+                                else run_grype(f"sbom:{sbom_in}", out_file, offline))
+                    if s2.startswith("ok"):
+                        res, s_ = res2, f"{s2} via our SBOM (filesystem mode: {s_[:60]})"
+                        modes[tool].add("sbom")
         except Exception as e:  # a broken external tool must never stop the scan
-            res, st = [], f"failed: {e}"
-        status[tool] = st + (f", {time.time() - t0:.0f}s" if res else "")
+            res, s_ = [], f"failed: {e}"
+        parts.setdefault(tool, []).append(f"{kind} {s_}" + (f", {time.time() - t0:.0f}s" if res or s_.startswith("ok") else ""))
         results += res
+    for tool, ps in parts.items():
+        status[tool] = "; ".join(ps)
         log(f"      {NAMES[tool]}: {status[tool]}")
+    use = tuple(dict.fromkeys(used))
     for img in images or []:
         res, st = run_trivy(img, out_dir / f"trivy-image-{abs(hash(img)) % 10**8}.json", offline, image=True)
         for r in res:
             r["image"] = img
         results += res
         status[f"trivy image {img}"] = st
-    ran = {"osv"} | {t for t in use if str(status.get(t, "")).startswith("ok")}
+    ran = {"osv"} | {t for t in use if any(p_.split(" ", 1)[1].startswith("ok") for p_ in parts.get(t, []))}
 
     # index our graph + OSV findings
     by_key = {}
@@ -245,8 +355,9 @@ def scan(graph, repo: Path, findings: list[Finding], repo_id: str, out_dir: Path
         eco = c.ecosystem if c is not None else ""
         support = set(SUPPORT.get(eco, {"trivy", "grype"}))
         # Trivy/Grype read NuGet only from packages.lock.json / *.deps.json, not from .csproj / packages.config
+        # (only in filesystem mode: from our SBOM they see the package like any other)
         if eco == "NuGet" and c is not None and not any(m.endswith("packages.lock.json") for m in c.manifests):
-            support -= {"trivy", "grype"}
+            support -= {t for t in ("trivy", "grype") if "sbom" not in modes.get(t, set())}
         if c is not None and any(m.startswith("discovered by") for m in c.manifests):
             support.discard("osv")
         appl = sorted((support | ({"osv"} if f.rule == "osv" else set())) & ran)

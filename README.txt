@@ -17,14 +17,14 @@ SETUP (Windows, PowerShell)
   pip install -r requirements.txt    only needed for the Claude provider
   copy .env.example .env             then add an AI key (Gemini / Groq / Claude) - optional
   python -m unittest discover -s tests
-Trivy and Grype are optional: put them in tools\trivy and tools\grype (or on PATH). The scan uses every
-scanner it finds; without them it runs on OSV alone.
+Trivy and Grype are optional: put them in tools\trivy and tools\grype (or on PATH). Without them the scan
+runs on OSV alone.
 
 
 COMMANDS
 --------
 Day 1 - Eyes
-  python -m guardian scan <folder | git URL> [--offline] [--scanners auto|osv|osv,trivy,grype] [--images]
+  python -m guardian scan <folder | git URL> [--offline] [--scanners auto|full|osv|osv,trivy,grype] [--images]
   python -m http.server 8765 --directory runs      then open http://localhost:8765/<repo>/guardian.html
 Day 2 - Brain
   python -m guardian analyze <repo> [--top 6]      business context + six agents + verifier
@@ -48,7 +48,7 @@ PIPELINE
 --------
 1 Discover   guardian/discover/      readers for npm, Python, Maven (+parent/BOM), Go, Ruby, PHP, C#/.NET, CycloneDX;
                                      deps.dev for lockfile-less trees -> dependency graph
-2 Detect     guardian/detect/        osv.py (OSV.dev, CVSS) + scanners.py (Trivy, Grype cross-check)
+2 Detect     guardian/detect/        osv.py (OSV.dev, CVSS) + scanners.py (dynamic Trivy/Grype plan, consensus)
                                      packages.py (typosquat, install scripts), lockfile.py (tampering, diff),
                                      container.py (images), cicd.py (GitHub Actions)
 3 Analyze    guardian/analyze/       reachability, EPSS + CISA KEV, business context (SSVC), base score
@@ -68,6 +68,21 @@ The six agents
   5 Critic / Reviewer             independent second opinion; disagreement -> human review
   6 Business Context              internet-facing? sensitive data? (every fact cites file:line)
 
+
+DYNAMIC SCANNER SELECTION (--scanners auto, the default)
+--------------------------------------------------------
+Discover runs first, then OSV (one batched query per package). What they found decides what Trivy/Grype do,
+and the console prints the plan with a reason for every step:
+  confirm   large repository: Trivy + Grype check only the components OSV flagged, from our SBOM
+            (exact resolved versions; seconds regardless of repository size)
+  gap       folders with lockfiles outside OSV and our readers (Cargo.lock, conan.lock, pubspec.lock, mix.lock,
+            Package.resolved, Podfile.lock, gradle.lockfile): Trivy + Grype scan only those folders
+  full      small repository (< 200 components): full cross-check, it costs seconds
+  skipped   whole-repository scans when every manifest is covered (printed with the reason)
+--scanners full  = all tools on the whole repository (complete second opinion, slower)
+--scanners osv   = OSV only.   --scanners osv,trivy = chosen tools on the whole repository.
+Measured: Juice Shop 14 s -> 10 s, confirmed by all three 52 -> 56 of 57; WebGoat 24 s -> 7 s, 36 -> 134 of 134
+(scanning our exact resolved versions works better than letting each scanner re-resolve the project).
 
 LANGUAGE AND SCANNER COVERAGE
 -----------------------------

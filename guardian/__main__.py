@@ -44,7 +44,7 @@ def main(argv=None) -> int:
     s.add_argument("--offline", action="store_true", help="use cached vulnerability/registry data only")
     s.add_argument("--baseline", help="earlier sbom.cdx.json to compare against (default: previous scan)")
     s.add_argument("--no-lockgen", action="store_true", help="do not generate missing npm lockfiles")
-    s.add_argument("--scanners", default="auto", help='auto (OSV + installed Trivy/Grype), "osv", or "osv,trivy,grype"')
+    s.add_argument("--scanners", default="auto", help='auto (dynamic: OSV first, then Trivy/Grype only where needed), full, osv, or "osv,trivy,grype"')
     s.add_argument("--images", action="store_true", help="also scan Docker base images with Trivy (downloads layers)")
     a = sub.add_parser("analyze")
     a.add_argument("repo")
