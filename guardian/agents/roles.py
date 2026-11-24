@@ -1,12 +1,14 @@
-"""The five agents of the Guardian and their deterministic fallbacks (used when no LLM is configured or an
-answer is rejected by the verifier).
+"""The Guardian's agents and their deterministic fallbacks (used when no LLM is configured or an answer is
+rejected by the verifier). Order = data flow:
 
-  1 Orchestrator & Triage (lead)  routes cases to specialists, then sets final priorities
+  1 Orchestrator & Triage (lead)  routes cases to specialists, then sets a first priority
   2 Vulnerability Analyst         is this CVE exploitable in THIS application?
   3 Supply-Chain Forensics        non-CVE risks: typosquats, install scripts, lockfile tampering, containers, CI/CD
-  4 Remediation Planner           safest allow-listed fix; next iteration after validation
-  5 Critic / Reviewer             independent second opinion on P1 verdicts and on the plan
-  6 Business Context              what the app does for the business: internet-facing? sensitive data? (file:line facts)
+  4 Critic / Reviewer             independent second opinion on P1 verdicts and on the plan
+  5 Business Context              what the app does for the business: internet-facing? sensitive data? (file:line facts)
+  6 Neurosymbolic Prioritizer     takes 1-5's verified outputs, applies config/neurosymbolic_rules.json and
+                                  re-prioritises: score + priority + confidence + explanation (neurosymbolic/prioritizer.py)
+  7 Remediation Planner           safest allow-listed fix for the re-prioritised risks; next iteration after validation
 """
 from __future__ import annotations
 
@@ -94,9 +96,10 @@ ALL = {a.name: a for a in (LEAD_ROUTE, LEAD_TRIAGE, VULN_ANALYST, FORENSICS, PLA
 AGENTS = [("1", "Orchestrator & Triage (lead)", "lead_router + lead_triage"),
           ("2", "Vulnerability Analyst", "vulnerability_analyst"),
           ("3", "Supply-Chain Forensics", "supply_chain_forensics"),
-          ("4", "Remediation Planner", "remediation_planner"),
-          ("5", "Critic / Reviewer", "critic"),
-          ("6", "Business Context", "business_context")]
+          ("4", "Critic / Reviewer", "critic"),
+          ("5", "Business Context", "business_context"),
+          ("6", "Neurosymbolic Prioritizer", "neurosymbolic_prioritizer (rules over agents 1-5)"),
+          ("7", "Remediation Planner", "remediation_planner")]
 
 
 # ------------------------------------------------------------ rule fallbacks ---

@@ -49,6 +49,8 @@ def build(run_dir: Path, log=print) -> dict:
             "planner_agent": a.get("planner"), "critic": a.get("critic"),
             "human_review": review.get(a["risk_item"]),
             "business": item.get("business"),
+            "neurosymbolic": ({k: item["neurosymbolic"][k] for k in ("score", "priority", "confidence", "confidence_label",
+                                                                     "why", "explanation")} if item.get("neurosymbolic") else None),
             "scanners": (f0 or {}).get("data", {}).get("scanners"),
             "applicable_scanners": (f0 or {}).get("data", {}).get("applicable_scanners"),
             "recommended_action": {"type": a["type"], "params": a["params"], "rationale": a["rationale"],
@@ -100,6 +102,10 @@ def markdown(r: dict) -> str:
         if s.get("ai_inference"):
             L.append(f"- {'AI inference' if s['ai_inference'].get('source') == 'ai' else 'Rule-based analysis'} ({s['ai_inference'].get('source')}, confidence {s['ai_inference'].get('confidence')}): "
                      f"{s['ai_inference'].get('risk_summary')}")
+        if s.get("neurosymbolic"):
+            n = s["neurosymbolic"]
+            L.append(f"- Neurosymbolic prioritizer: {n['priority']} (score {n['score']}, confidence {n['confidence']} "
+                     f"{n['confidence_label']}) - {n['why']}")
         if s.get("business"):
             b = s["business"]
             L.append(f"- Business (SSVC): {b['decision']} ({b['points']:+d}) - {b['reason']}; exposure {b['exposure']}, "
