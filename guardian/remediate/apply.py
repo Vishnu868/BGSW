@@ -60,7 +60,8 @@ def preflight(run_dir: Path, plan: dict) -> dict:
 def _edit_json(path: Path, fn) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
     fn(data)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    # ensure_ascii=False keeps non-ASCII text as it was ("Björn", not "Björn"): the patch shows only real changes
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _do(sb: Path, a: dict) -> str:

@@ -371,3 +371,12 @@ class HealthCheckTest(unittest.TestCase):
         new = health._surface({"type": "object", "keys": ["expressjwt"], "esModule": True, "defaultType": None, "defaultKeys": []})
         self.assertTrue(health._has(old, ej[0]))                      # v0.1: module.exports = function
         self.assertFalse(health._has(new, ej[0]))                     # v7: no default function -> breaking
+
+
+class ApplyEditKeepsTextTest(unittest.TestCase):
+    def test_non_ascii_preserved(self):
+        from guardian.remediate.apply import _edit_json
+        f = Path(tempfile.mkdtemp()) / "package.json"
+        f.write_text('{"author": "Björn", "dependencies": {"a": "1.0.0"}}', encoding="utf-8")
+        _edit_json(f, lambda d: d["dependencies"].__setitem__("a", "2.0.0"))
+        self.assertIn("Björn", f.read_text(encoding="utf-8"))          # not "Bj\u00f6rn": no fake changes in the patch

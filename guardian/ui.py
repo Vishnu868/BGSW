@@ -82,6 +82,34 @@ def command(step: str, repo: str, target: str, offline: bool) -> list[str]:
     return g + simple[step]
 
 
+def sandbox_state(repo: str, file: str = "") -> dict:
+    """Read-only view of the remediation sandbox (git): branch, changed files vs the scanned baseline, one file's diff.
+    Includes edits not committed yet, so it updates live while apply is running."""
+    root = RUNS / repo / "sandbox"
+    dirs = [d for d in root.glob("*") if (d / ".git").exists()] if root.exists() else []
+    if not dirs:
+        return {"exists": False}
+    sb = dirs[0]
+
+    def git(*args, limit=400_000):
+        r = subprocess.run(["git", "-C", str(sb), *args], capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", stdin=subprocess.DEVNULL, timeout=30)
+        return r.stdout[:limit]
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    files = []
+    for line in git("diff", "--numstat", "main", "--").splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3:
+            files.append({"file": parts[2], "added": parts[0], "removed": parts[1]})
+    out = {"exists": True, "path": str(sb), "branch": branch, "files": files,
+           "commits": git("log", "--format=%h %s", "-5").strip().splitlines(),
+           "stop": (RUNS / repo / "STOP").exists()}
+    if file and any(f["file"] == file for f in files):           # only files that really changed - no path tricks
+        out["file"] = file
+        out["diff"] = git("diff", "main", "--", file, limit=200_000)
+    return out
+
+
 class Job:
     def __init__(self):
         self.lock = threading.Lock()
@@ -166,6 +194,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/state":
             stops = {r: (RUNS / r / "STOP").exists() for r in repos()}
             return self._json({"repos": repos(), "targets": targets(), "stop": stops})
+        if u.path == "/api/sandbox":
+            q = parse_qs(u.query)
+            repo = (q.get("repo") or [""])[0]
+            if repo not in repos():
+                return self._json({"error": "unknown repository"}, 400)
+            return self._json(sandbox_state(repo, (q.get("file") or [""])[0]))
         if u.path == "/api/monitor":
             repo = (parse_qs(u.query).get("repo") or [""])[0]
             if repo not in repos():
@@ -304,14 +338,19 @@ th{color:var(--muted);font-size:12px;font-weight:600}
 .code{font:12px Consolas,monospace;background:var(--chip);border-radius:6px;padding:4px 8px;display:block;margin-top:3px;word-break:break-word}
 .muted{color:var(--muted)}iframe{width:100%;height:calc(100vh - 150px);border:0;background:var(--card)}
 .layers li{margin:4px 0}
-@media (max-width:980px){.wrap{grid-template-columns:1fr}#out{height:420px}}
+.sbx{display:grid;grid-template-columns:340px 1fr;gap:14px}
+.flist{max-height:calc(100vh - 330px);overflow:auto}.flist div{padding:6px 8px;border-radius:8px;cursor:pointer;font:12.5px Consolas,monospace;word-break:break-all}
+.flist div:hover{background:var(--chip)}.flist div.sel{background:#e6ecf8;font-weight:600}.flist .add{color:var(--green)}.flist .del{color:var(--pink)}
+.diff{font:12.5px/1.5 Consolas,monospace;white-space:pre;overflow:auto;max-height:calc(100vh - 330px);background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 0}
+.diff div{padding:0 12px}.diff .a{background:#e6f6ea;color:#14532d}.diff .d{background:#fde8ec;color:#8b1235}.diff .h{background:#eef2fb;color:var(--navy);font-weight:600}.diff .m{color:var(--muted)}
+@media (max-width:980px){.wrap,.sbx{grid-template-columns:1fr}#out{height:420px}}
 </style></head><body>
 <header><h1><span>Guardian</span> control center</h1>
 <label>Repository <select id="repo"></select></label>
 <label class="chk"><input type="checkbox" id="offline"> offline (cached data only)</label></header>
 <nav class="tabs" id="tabs">
  <button data-p="steps" class="on">Run steps</button><button data-p="monitor">Live fix monitor</button>
- <button data-p="health">App health</button><button data-p="diff">Graph before vs after</button>
+ <button data-p="sandbox">Live sandbox</button><button data-p="health">App health</button><button data-p="diff">Graph before vs after</button>
  <button data-p="dash">Dashboard</button><button data-p="report">Final report</button></nav>
 
 <section class="page on" id="p-steps"><div class="wrap">
@@ -336,6 +375,16 @@ th{color:var(--muted);font-size:12px;font-weight:600}
  <div class="wrap" style="padding:0;grid-template-columns:1fr 1fr">
   <div class="card"><h3>Events</h3><div class="console mini" id="events"></div></div>
   <div class="card"><h3>Live output</h3><div class="console mini" id="out2"></div></div></div>
+</div></section>
+
+<section class="page" id="p-sandbox"><div class="pad">
+ <div class="card"><div class="bar" style="justify-content:space-between"><h3 style="margin:0">Live sandbox</h3>
+  <span class="bar"><button data-run="apply2" class="go">Apply fixes</button><a id="sbPatch" target="_blank" class="links"></a></span></div>
+  <p class="muted" style="margin:6px 0 0">The sandbox is a copy of the repository on its own git branch. Every change the approved fixes make is shown
+  here against the scanned original, live while Apply runs. The original repository is never touched; the result is remediation.patch.</p>
+  <div class="kpis" id="sbInfo" style="margin-top:10px"></div></div>
+ <div class="sbx"><div class="card"><h3>Changed files</h3><div class="flist" id="sbFiles"></div></div>
+  <div class="card"><h3 id="sbTitle">Diff</h3><div class="diff" id="sbDiff"><div class="m">Select a file on the left.</div></div></div></div>
 </div></section>
 
 <section class="page" id="p-health"><div class="pad">
@@ -424,6 +473,7 @@ document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
   const fr = {diff: "#f-diff", dash: "#f-dash", report: "#f-report"}[page];
   if (fr) $(fr).src = `/runs/${encodeURIComponent(repo())}/${{diff: "graph_diff.html", dash: "guardian.html", report: "guardian_report.html"}[page]}?t=` + Date.now();
   if (page === "monitor" || page === "health") monitor();
+  if (page === "sandbox") sandbox();
 });
 function setRunning(v) {
   running = v;
@@ -531,6 +581,30 @@ async function monitor() {
         : "<span class='muted'>no direct import in the app's source</span>"}</td></tr>`).join("");
 }
 setInterval(() => { if (page === "monitor" || page === "health") monitor(); }, 1000);
+// ---------------- live sandbox ----------------
+let sbFile = "";
+async function sandbox() {
+  if (!repo()) return;
+  let st; try { st = await api("/api/sandbox?repo=" + encodeURIComponent(repo()) + "&file=" + encodeURIComponent(sbFile)); } catch (e) { return; }
+  if (!st.exists) { $("#sbInfo").innerHTML = '<div class="kpi"><b>no sandbox yet</b><small>approve the plan, then Apply</small></div>';
+    $("#sbFiles").innerHTML = ""; $("#sbDiff").innerHTML = '<div class="m">Nothing applied yet.</div>'; return; }
+  const add = st.files.reduce((n, f) => n + (+f.added || 0), 0), del = st.files.reduce((n, f) => n + (+f.removed || 0), 0);
+  $("#sbInfo").innerHTML = [[st.branch, "sandbox branch"], [st.files.length, "files changed"], [`+${add} / -${del}`, "lines"],
+    [st.stop ? "ON" : "off", "kill switch"], [(st.commits[0] || "").slice(0, 40), "latest commit"]]
+    .map(([x, l]) => `<div class="kpi"><b style="font-size:16px">${esc(x)}</b><small>${l}</small></div>`).join("");
+  $("#sbPatch").innerHTML = `<a href="/runs/${encodeURIComponent(repo())}/remediation.patch" target="_blank">remediation.patch</a>`;
+  if (!sbFile && st.files.length) { sbFile = (st.files.find(f => f.file === "package.json") || st.files[0]).file; return sandbox(); }
+  $("#sbFiles").innerHTML = st.files.map(f => `<div data-f="${esc(f.file)}" class="${f.file === sbFile ? "sel" : ""}">${esc(f.file)}
+     <span class="add">+${esc(f.added)}</span> <span class="del">-${esc(f.removed)}</span></div>`).join("") || '<div class="m">no changes yet</div>';
+  if (st.diff !== undefined) {
+    $("#sbTitle").textContent = "Diff: " + st.file + "  (scanned original → sandbox)";
+    $("#sbDiff").innerHTML = st.diff.split("\n").map(l => `<div class="${l.startsWith("@@") ? "h" : l.startsWith("+") && !l.startsWith("+++") ? "a"
+      : l.startsWith("-") && !l.startsWith("---") ? "d" : "m"}">${esc(l) || " "}</div>`).join("");
+  }
+}
+$("#sbFiles").addEventListener("click", e => { const d = e.target.closest("[data-f]"); if (d) { sbFile = d.dataset.f; sandbox(); } });
+setInterval(() => { if (page === "sandbox") sandbox(); }, 1500);
+
 refresh().then(() => { frames(); monitor();
   const want = location.hash.slice(1);                     // e.g. http://127.0.0.1:8780/#monitor opens that tab
   if (want) { const b = document.querySelector(`#tabs [data-p="${want}"]`); if (b) b.click(); } });
